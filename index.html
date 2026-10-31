@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mend — Supply-Gap Exchange</title>
+<meta name="description" content="Mend is a verified B2B exchange where unfilled demand for critical goods meets manufacturers in underserved regions — with the finance to close the gap." />
+<meta name="theme-color" content="#f4f3ef" />
+<meta property="og:title" content="Mend — Supply-Gap Exchange" />
+<meta property="og:description" content="Where the world's supply gaps meet the world's makers." />
+<meta property="og:type" content="website" />
+
+<!-- Pre-paint theme: applied before CSS so there is no light/dark flash. -->
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem('mend.v2.theme');
+      if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
+    } catch (e) { /* storage blocked — stay on the light default */ }
+  })();
+</script>
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23f4f3ef'/%3E%3Crect x='6' y='6' width='7' height='20' fill='%2317191c'/%3E%3Crect x='19' y='6' width='7' height='20' fill='%2317191c'/%3E%3Crect x='14' y='6' width='4' height='9' fill='%23d9480f'/%3E%3C/svg%3E" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous" />
+<link rel="stylesheet" href="assets/app.css" />
+</head>
+<body>
+
+<a class="skip" href="#demands">Skip to demands</a>
+
+<!-- Icon sprite: replaces the 300 KB Lucide CDN with ~4 KB of the icons we use. -->
+<svg xmlns="http://www.w3.org/2000/svg" class="sprite" aria-hidden="true">
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7.5"/><path d="m21 21-4.6-4.6"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></symbol>
+  <symbol id="i-arrow-up-right" viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></symbol>
+</svg>
+
+<header class="hdr" id="top">
+  <div class="page hdr-in">
+    <a class="brand" href="#top" aria-label="Mend home">
+      <svg class="brand-mark" viewBox="0 0 18 18" aria-hidden="true">
+        <rect x="1" y="1" width="4" height="16"/><rect x="13" y="1" width="4" height="16"/>
+        <rect class="brand-gap" x="8" y="1" width="2" height="7"/>
+      </svg>
+      <span class="brand-text">
+        <span class="brand-name">MEND</span>
+        <span class="brand-sub">Supply-gap exchange</span>
+      </span>
+    </a>
+
+    <nav class="nav" aria-label="Sections">
+      <a href="#radar" data-nav="radar">Radar</a>
+      <a href="#demands" data-nav="demands">Demands</a>
+      <a href="#makers" data-nav="makers">Makers</a>
+      <a href="#symbiosis" data-nav="symbiosis">Symbiosis</a>
+      <a href="#finance" data-nav="finance">Finance</a>
+      <a href="#desk" data-nav="desk">Desk</a>
+    </nav>
+
+    <div class="hdr-right">
+      <div class="clock" aria-label="Local market time">
+        <span id="clock">--:--</span>
+        <span class="clock-tz">WAT</span>
+      </div>
+      <div class="alerts-wrap">
+        <button class="icon-btn" id="alerts-btn" data-act="alerts" aria-expanded="false" aria-controls="alerts-pop" aria-label="Match alerts">
+          <svg class="ic" aria-hidden="true"><use href="#i-bell"/></svg>
+          <span class="alerts-count" id="alerts-count" hidden>0</span>
+        </button>
+        <div class="alerts-pop" id="alerts-pop" hidden>
+          <div class="pop-head">
+            <span class="mono-label">Match alerts</span>
+            <span class="live-tag"><i class="live-dot"></i>Live</span>
+          </div>
+          <p class="pop-note">Watch categories. When a buyer posts a gap that matches, it lands here.</p>
+          <div class="watch-chips" id="watch-chips"></div>
+          <div class="pop-sub">
+            <span>Matching now</span>
+            <span class="num" id="alert-count">0</span>
+          </div>
+          <div class="alert-list" id="alert-list"></div>
+          <a class="pop-foot" href="#demands" data-act="goto" data-target="demands">
+            Browse all demands <svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg>
+          </a>
+        </div>
+      </div>
+      <button class="icon-btn" id="theme-toggle" data-act="theme" aria-label="Switch theme">
+        <svg class="ic icon-sun" aria-hidden="true"><use href="#i-sun"/></svg>
+        <svg class="ic icon-moon" aria-hidden="true"><use href="#i-moon"/></svg>
+      </button>
+      <button class="btn btn-primary btn-sm" data-act="post" aria-label="Post a demand">
+        <svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>
+        <span class="post-label">Post demand</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="ticker" role="status" aria-live="off">
+  <div class="page ticker-in">
+    <span class="tick"><span class="tick-k">Open demand</span><span class="tick-v num" id="tick-open">—</span></span>
+    <span class="tick"><span class="tick-k">Acute gaps</span><span class="tick-v num tick-hot" id="tick-acute">—</span></span>
+    <span class="tick"><span class="tick-k">Verified makers</span><span class="tick-v num" id="tick-makers">—</span></span>
+    <span class="tick tick-opt"><span class="tick-k">Regions</span><span class="tick-v num" id="tick-regions">—</span></span>
+    <span class="tick tick-opt"><span class="tick-k">Median lead</span><span class="tick-v num" id="tick-lead">—</span></span>
+    <span class="ticker-end"><span class="live-tag"><i class="live-dot"></i>Demo data</span><span class="tick-date" id="today">—</span></span>
+  </div>
+</div>
+
+<main id="main">
+
+  <!-- ============================== MASTHEAD ============================== -->
+  <section class="masthead">
+    <div class="page masthead-in">
+      <div class="masthead-copy">
+        <p class="eyebrow"><span class="eyebrow-idx">00</span> Market brief / global supply gaps</p>
+        <h1>Where the world's supply gaps meet the world's makers.</h1>
+        <p class="lede">
+          A verified exchange for critical goods. Buyers with unfilled contracts meet producers
+          in underserved regions — with the certifications, lead times and finance to close.
+        </p>
+        <div class="search">
+          <svg class="ic search-ic" aria-hidden="true"><use href="#i-search"/></svg>
+          <input id="m-search" type="search" placeholder="Search demands, makers or specs" autocomplete="off" aria-label="Search Mend" />
+          <kbd class="kbd">/</kbd>
+        </div>
+        <div class="chips" id="m-chips">
+          <button class="chip" data-act="chip" data-severity="acute">Acute only</button>
+          <button class="chip" data-act="chip" data-category="transformers">Power transformers</button>
+          <button class="chip" data-act="chip" data-region="West Africa">West Africa</button>
+          <button class="chip" data-act="chip" data-verified="1">Verified buyers</button>
+        </div>
+      </div>
+
+      <aside class="book" aria-label="Market book summary">
+        <div class="book-head">
+          <span class="mono-label">The book</span>
+          <span class="live-tag"><i class="live-dot"></i>Open</span>
+        </div>
+        <dl class="book-rows">
+          <div class="book-row">
+            <dt>Open demand value</dt>
+            <dd class="num" id="book-open">—</dd>
+          </div>
+          <div class="book-row">
+            <dt>Active demands</dt>
+            <dd class="num" id="book-count">—</dd>
+          </div>
+          <div class="book-row">
+            <dt>Verified makers</dt>
+            <dd class="num" id="book-makers">—</dd>
+          </div>
+          <div class="book-row">
+            <dt>Median lead time</dt>
+            <dd class="num" id="book-lead">—</dd>
+          </div>
+        </dl>
+        <p class="book-note" id="book-note">Illustrative data · updated just now</p>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ================================ RADAR ================================ -->
+  <section class="section" id="radar">
+    <div class="page">
+      <div class="sec-head">
+        <div class="sec-title-wrap">
+          <p class="eyebrow"><span class="eyebrow-idx">01</span> Gap radar</p>
+          <h2 class="sec-title">Open demand, mapped.</h2>
+          <p class="sec-sub">Each dot is an unfilled contract. Size is value, colour is shortage severity.</p>
+        </div>
+        <div class="sec-tools">
+          <label class="toggle" title="Show manufacturer pins">
+            <input type="checkbox" id="toggle-factories" checked />
+            <span class="switch" aria-hidden="true"></span> Makers
+          </label>
+          <label class="sr-only" for="radar-category">Filter radar by category</label>
+          <select id="radar-category" class="select select-sm"></select>
+          <button class="btn btn-ghost btn-sm" data-act="fit-map">
+            <svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg> Fit view
+          </button>
+        </div>
+      </div>
+
+      <div class="radar-grid">
+        <div class="map-wrap">
+          <div id="map" class="map" role="application" aria-label="Map of open supply gaps"></div>
+          <div class="map-legend" aria-hidden="true">
+            <span class="lg"><i class="dot sev-acute"></i>Acute</span>
+            <span class="lg"><i class="dot sev-tight"></i>Tight</span>
+            <span class="lg"><i class="dot sev-healthy"></i>Healthy</span>
+            <span class="lg lg-split"><i class="sq"></i>Maker</span>
+            <span class="lg"><i class="sq sq-open"></i>Pending</span>
+          </div>
+          <div class="map-empty" id="map-empty" hidden>
+            <p>No gaps match this filter.</p>
+            <button class="btn btn-ghost btn-sm" data-act="reset-filters">Reset filters</button>
+          </div>
+        </div>
+
+        <aside class="rail" aria-label="Critical gaps">
+          <div class="rail-head">
+            <span class="mono-label">Filtered gaps</span>
+            <span class="rail-count num" id="radar-count">0</span>
+          </div>
+          <div class="rail-list" id="hotspot-list"></div>
+          <div class="rail-foot">
+            <svg class="ic" aria-hidden="true"><use href="#i-pin"/></svg>
+            Select a gap to open its brief
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <!-- =============================== DEMANDS =============================== -->
+  <section class="section" id="demands">
+    <div class="page">
+      <div class="sec-head">
+        <div class="sec-title-wrap">
+          <p class="eyebrow"><span class="eyebrow-idx">02</span> Open demands</p>
+          <h2 class="sec-title">The live book.</h2>
+          <p class="sec-sub">Unfilled contracts from verified and pending buyers. <span class="num" id="demand-count">0</span> in view.</p>
+        </div>
+        <a class="link-arrow" href="#bids">Your bids <svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
+      </div>
+
+      <div class="toolbar">
+        <label class="field field-search">
+          <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
+          <input id="d-search" type="search" placeholder="Search title, buyer, spec" autocomplete="off" aria-label="Search demands" />
+        </label>
+        <label class="sr-only" for="d-category">Category</label>
+        <select id="d-category" class="select"></select>
+        <label class="sr-only" for="d-region">Region</label>
+        <select id="d-region" class="select"></select>
+        <label class="sr-only" for="d-severity">Severity</label>
+        <select id="d-severity" class="select">
+          <option value="all">All severities</option>
+          <option value="acute">Acute</option>
+          <option value="tight">Tight</option>
+          <option value="healthy">Healthy</option>
+        </select>
+        <label class="check">
+          <input type="checkbox" id="d-verified" /><span>Verified buyers</span>
+        </label>
+        <div class="toolbar-end">
+          <label class="sr-only" for="d-sort">Sort demands</label>
+          <select id="d-sort" class="select">
+            <option value="severity">Sort · severity</option>
+            <option value="value">Sort · value</option>
+            <option value="deadline">Sort · deadline</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" data-act="reset-filters">Reset</button>
+        </div>
+      </div>
+
+      <div class="table-scroll">
+        <table class="tbl tbl-demands">
+          <thead>
+            <tr>
+              <th scope="col">Demand</th>
+              <th scope="col">Buyer</th>
+              <th scope="col">Location</th>
+              <th scope="col" class="r">Value</th>
+              <th scope="col">Closes</th>
+              <th scope="col">Gap</th>
+              <th scope="col" class="r"><span class="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody id="demand-body"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="demand-empty" hidden>
+        <p>No demands match these filters.</p>
+        <button class="btn btn-ghost btn-sm" data-act="reset-filters">Clear filters</button>
+      </div>
+
+      <div class="bids-block" id="bids">
+        <div class="bids-head">
+          <div>
+            <h3 class="block-title">Your bids</h3>
+            <p class="block-note" id="bids-note">0 of 3 free bids used this month</p>
+          </div>
+          <span class="mono-label"><span class="num" id="bids-count">0</span> submitted</span>
+        </div>
+        <div class="table-scroll">
+          <table class="tbl tbl-bids">
+            <thead>
+              <tr>
+                <th scope="col">Demand</th>
+                <th scope="col" class="r">Your price</th>
+                <th scope="col" class="r">vs budget</th>
+                <th scope="col" class="r">Delivery</th>
+                <th scope="col">Status</th>
+                <th scope="col" class="r"><span class="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody id="bids-body"></tbody>
+          </table>
+        </div>
+        <div class="empty empty-slim" id="bids-empty">
+          <p>No bids yet. Open any demand and place one — it stays in this browser.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================ MAKERS ================================ -->
+  <section class="section" id="makers">
+    <div class="page">
+      <div class="sec-head">
+        <div class="sec-title-wrap">
+          <p class="eyebrow"><span class="eyebrow-idx">03</span> Supplier directory</p>
+          <h2 class="sec-title">Makers, by capability.</h2>
+          <p class="sec-sub">Audited producers with capacity, certifications and export readiness.</p>
+        </div>
+        <span class="stat-inline"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg><span class="num" id="maker-count">0</span> in view</span>
+      </div>
+
+      <div class="toolbar">
+        <label class="sr-only" for="s-cert">Certification</label>
+        <select id="s-cert" class="select"></select>
+        <label class="sr-only" for="s-country">Country</label>
+        <select id="s-country" class="select"></select>
+        <label class="range">
+          <span>Max lead</span>
+          <input type="range" id="s-lead" min="14" max="120" step="1" value="120" />
+          <output class="num" id="s-lead-out" for="s-lead">Any</output>
+        </label>
+        <div class="toolbar-end">
+          <label class="sr-only" for="s-sort">Sort makers</label>
+          <select id="s-sort" class="select">
+            <option value="name">Sort · name</option>
+            <option value="lead">Sort · fastest lead</option>
+            <option value="capacity">Sort · capacity</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="table-scroll">
+        <table class="tbl tbl-makers">
+          <thead>
+            <tr>
+              <th scope="col">Maker</th>
+              <th scope="col">Location</th>
+              <th scope="col">Certs</th>
+              <th scope="col" class="r">Capacity</th>
+              <th scope="col" class="r">Lead</th>
+              <th scope="col">Status</th>
+              <th scope="col" class="r"><span class="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody id="maker-body"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="maker-empty" hidden>
+        <p>No makers match this filter.</p>
+        <button class="btn btn-ghost btn-sm" data-act="reset-dir">Reset directory</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== SYMBIOSIS ============================== -->
+  <section class="section section-alt" id="symbiosis">
+    <div class="page">
+      <div class="sec-head">
+        <div class="sec-title-wrap">
+          <p class="eyebrow"><span class="eyebrow-idx">04</span> Raw-material symbiosis</p>
+          <h2 class="sec-title">One maker's waste is another's input.</h2>
+          <p class="sec-sub">Recovered material matched across the network. Values are monthly, illustrative.</p>
+        </div>
+        <span class="stat-inline"><span class="num" id="symbiosis-count">0</span> live matches</span>
+      </div>
+      <div class="flow-list" id="symbiosis-list"></div>
+    </div>
+  </section>
+
+  <!-- =============================== FINANCE =============================== -->
+  <section class="section" id="finance">
+    <div class="page">
+      <div class="sec-head">
+        <div class="sec-title-wrap">
+          <p class="eyebrow"><span class="eyebrow-idx">05</span> Financing &amp; incentives</p>
+          <h2 class="sec-title">Capital that fits the gap.</h2>
+          <p class="sec-sub">Programs that cover your current category and region are flagged.</p>
+        </div>
+        <span class="stat-inline"><span class="num" id="finance-count">0</span> programs in view</span>
+      </div>
+      <div class="fin-list" id="finance-list"></div>
+    </div>
+  </section>
+
+  <!-- ================================ DESK ================================= -->
+  <section class="section" id="desk">
+    <div class="page">
+      <div class="sec-head">
+        <div class="sec-title-wrap">
+          <p class="eyebrow"><span class="eyebrow-idx">06</span> Your desk</p>
+          <h2 class="sec-title">Your book, in one place.</h2>
+          <p class="sec-sub">Bids, matched deals and commission — all stored in this browser.</p>
+        </div>
+        <span class="live-tag"><i class="live-dot"></i>Session</span>
+      </div>
+
+      <div class="kpis" id="desk-kpis"></div>
+
+      <div class="desk-grid">
+        <div class="desk-block">
+          <div class="block-head">
+            <h3 class="block-title">Commission ledger</h3>
+            <span class="mono-label"><span class="num" id="ledger-count">0</span> matches</span>
+          </div>
+          <div class="table-scroll">
+            <table class="tbl tbl-ledger">
+              <thead>
+                <tr>
+                  <th scope="col">Deal</th>
+                  <th scope="col">Supplier</th>
+                  <th scope="col" class="r">Value</th>
+                  <th scope="col" class="r">Fee</th>
+                  <th scope="col">Status</th>
+                  <th scope="col" class="r">Date</th>
+                </tr>
+              </thead>
+              <tbody id="ledger-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <aside class="desk-block">
+          <div class="block-head">
+            <h3 class="block-title">Activity</h3>
+            <span class="live-tag"><i class="live-dot"></i>Live</span>
+          </div>
+          <ol class="activity" id="activity-list"></ol>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================ MODEL ================================ -->
+  <section class="section" id="model">
+    <div class="page model-grid">
+      <div>
+        <p class="eyebrow"><span class="eyebrow-idx">07</span> Business model</p>
+        <h2 class="sec-title">Five ways Mend earns.</h2>
+        <p class="sec-sub model-lede">
+          A take rate on matched value, plus services around it. No listing fees for buyers;
+          the first three bids each month are free.
+        </p>
+        <p class="model-math">
+          <span class="mono-label">Worked example</span>
+          <span class="num">$145.8M</span> book <span class="op">×</span> <span class="num">2%</span> take
+          <span class="op">=</span> <span class="num model-strong">$2.9M</span> potential annual revenue.
+        </p>
+      </div>
+      <div class="rev-list" id="revenue-list"></div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="page footer-in">
+    <div class="footer-brand">
+      <svg class="brand-mark" viewBox="0 0 18 18" aria-hidden="true">
+        <rect x="1" y="1" width="4" height="16"/><rect x="13" y="1" width="4" height="16"/>
+        <rect class="brand-gap" x="8" y="1" width="2" height="7"/>
+      </svg>
+      <div>
+        <p class="footer-name">MEND</p>
+        <p class="footer-tag">Where supply gaps close.</p>
+      </div>
+    </div>
+    <div class="footer-meta">
+      <p><span class="mono-label">Prototype</span> All figures are illustrative. Bids, posted demands, watchlists and theme live in this browser only.</p>
+      <p><span class="mono-label">Stack</span> Vanilla JS · Leaflet 1.9 · IBM Plex. No build step, no framework.</p>
+    </div>
+    <p class="footer-copy">© <span id="year">2026</span> Mend Exchange</p>
+  </div>
+</footer>
+
+<!-- ============================== OVERLAYS ============================== -->
+<div id="drawer" class="drawer" aria-hidden="true">
+  <div class="drawer-backdrop" data-act="close-drawer"></div>
+  <aside class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawer-title" tabindex="-1">
+    <div id="drawer-content"></div>
+  </aside>
+</div>
+
+<div id="modal" class="modal" aria-hidden="true">
+  <div class="modal-backdrop" data-act="close-modal"></div>
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div id="modal-content"></div>
+  </div>
+</div>
+
+<div class="toasts" id="toast-root" aria-live="polite" aria-atomic="false"></div>
+
+<noscript>
+  <p class="noscript">Mend needs JavaScript for the map, bids and local storage. Please enable it.</p>
+</noscript>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+<script src="js/data.js"></script>
+<script src="js/core.js"></script>
+<script src="js/map.js"></script>
+<script src="js/render.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
