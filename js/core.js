@@ -154,6 +154,7 @@ window.Mend = window.Mend || {};
   function bidsThisMonth() {
     const now = new Date();
     return state.bids.filter((b) => {
+      if (b.status !== "pending") return false;
       const d = new Date(b.createdAt);
       return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
     }).length;

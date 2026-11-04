@@ -902,6 +902,30 @@ h1 {
   background: var(--acute-soft); font-size: 11px; color: var(--ink-2);
 }
 
+/* -------------------------------- auth -------------------------------- */
+.auth-chip {
+  display: grid; place-items: center; width: 100%; height: 100%;
+  border-radius: 50%; background: var(--cobalt-soft); color: var(--cobalt);
+  font: 600 11px/1 var(--mono);
+}
+.auth-reason {
+  margin: 14px 22px 0; padding: 9px 11px; border-left: 2px solid var(--cobalt);
+  background: var(--cobalt-soft); font-size: 11px; line-height: 1.5; color: var(--ink-2);
+}
+.auth-ok {
+  margin-top: 12px; padding: 9px 11px; border-left: 2px solid var(--healthy);
+  background: var(--healthy-soft); font-size: 11px; line-height: 1.5; color: var(--ink-2);
+}
+.acct-summary {
+  display: grid; gap: 5px; padding: 12px 14px; border: 1px solid var(--rule);
+  background: var(--paper);
+}
+.acct-k {
+  font: 500 8.5px/1 var(--mono); text-transform: uppercase;
+  letter-spacing: 0.09em; color: var(--ink-3);
+}
+.acct-v { font-size: 12px; line-height: 1.5; color: var(--ink-2); }
+
 /* --------------------------------- toasts ----------------------------- */
 .toasts {
   position: fixed; left: 20px; bottom: 20px; z-index: 1500;

@@ -18,6 +18,7 @@ window.Mend = window.Mend || {};
 
   /* ------------------------------ boot -------------------------------- */
   function init() {
+    state.session = null;
     populateSelects();
     applyTheme(state.theme, true);
     Mend.renderAll();
@@ -29,7 +30,206 @@ window.Mend = window.Mend || {};
       Mend.renderActivity();
       Mend.renderTicker();
     }, 60000);
+    if (Mend.db) Mend.db.init(onSessionChange);
   }
+
+  /* ------------------------- backend & session ------------------------- */
+  function remoteActive() {
+    return !!(Mend.db && Mend.db.configured());
+  }
+  function authed() {
+    return !!(Mend.db && Mend.db.session());
+  }
+
+  let sessionBooted = false;
+
+  async function onSessionChange(user) {
+    state.session = user;
+    renderAccountButton();
+    if (!remoteActive()) { sessionBooted = true; return; }
+
+    const live = await Mend.db.loadCatalog();
+    if (!live) {
+      updateLiveTags(false);
+      sessionBooted = true;
+      return;
+    }
+
+    state.posted = [];
+    const data = await Mend.db.loadUserData();
+    if (data) {
+      state.bids = user ? data.bids : [];
+      state.watch = user ? data.watch : ["transformers", "nutrition"];
+      state.activity = data.activity.length ? data.activity : Mend.seedActivity();
+    }
+
+    populateSelects();
+    Mend.renderAll();
+    if (Mend.map) Mend.map.render();
+    updateLiveTags(true);
+
+    if (sessionBooted) {
+      Mend.toast(user ? "Signed in as " + user.email : "Signed out.", "ok");
+    }
+    sessionBooted = true;
+  }
+
+  function updateLiveTags(live) {
+    const tag = $("live-tag");
+    if (tag) tag.textContent = live ? "Live exchange" : "Demo data";
+    const bidsNote = $("bids-empty-text");
+    if (bidsNote) bidsNote.textContent = live
+      ? "No bids yet. Open any demand and place one — signed-in bids sync to your account."
+      : "No bids yet. Open any demand and place one — it stays in this browser.";
+    const foot = $("footer-data-note");
+    if (foot) foot.textContent = live
+      ? "Live figures from the Mend exchange. Sign in to sync bids, listings and alerts."
+      : "All figures are illustrative. Bids, posted demands, watchlists and theme live in this browser only.";
+  }
+
+  function renderAccountButton() {
+    const btn = $("auth-btn");
+    if (!btn) return;
+    if (!remoteActive()) { btn.hidden = true; return; }
+    btn.hidden = false;
+    if (state.session) {
+      const initial = ((state.session.email || "?").trim().charAt(0) || "?").toUpperCase();
+      btn.innerHTML = '<span class="auth-chip">' + Mend.esc(initial) + "</span>";
+      btn.setAttribute("aria-label", "Account — " + state.session.email);
+    } else {
+      btn.innerHTML = icon("user");
+      btn.setAttribute("aria-label", "Sign in");
+    }
+  }
+
+  function friendlyAuthError(msg) {
+    const m = String(msg || "");
+    if (/invalid login credentials/i.test(m)) return "Email or password is incorrect.";
+    if (/already registered/i.test(m)) return "An account with this email already exists — sign in instead.";
+    if (/rate limit|too many/i.test(m)) return "Too many attempts — wait a moment and try again.";
+    if (/email not confirmed/i.test(m)) return "Confirm your email first — check your inbox.";
+    if (/password.*(at least|should be)/i.test(m)) return "Password must be at least 6 characters.";
+    if (/fetch|network|load|reach/i.test(m)) return "Could not reach the backend. Try again.";
+    return m || "Something went wrong.";
+  }
+
+  function openAuthModal(mode, reason) {
+    const isLogin = mode !== "signup";
+    openModal(
+      '<div class="m-head"><div><p class="m-kicker">' + (isLogin ? "Account" : "Create account") + '</p>' +
+        '<h2 class="m-title" id="modal-title">' + (isLogin ? "Sign in to Mend" : "Join the exchange") + "</h2></div>" +
+        '<button class="icon-btn" data-act="close-modal" aria-label="Close">' + icon("x") + "</button></div>" +
+      (reason ? '<p class="auth-reason">' + Mend.esc(reason) + "</p>" : "") +
+      '<form data-form="auth" data-mode="' + (isLogin ? "login" : "signup") + '" novalidate>' +
+        '<div class="m-body"><div class="fields">' +
+          '<div class="fld" data-fld="email"><label for="a-email">Work email</label>' +
+            '<input id="a-email" name="email" type="email" autocomplete="email" placeholder="you@company.com">' +
+            '<span class="err" data-err></span></div>' +
+          '<div class="fld" data-fld="password"><label for="a-pass">Password</label>' +
+            '<input id="a-pass" name="password" type="password" autocomplete="' +
+              (isLogin ? "current-password" : "new-password") + '" placeholder="At least 6 characters">' +
+            '<span class="hint">At least 6 characters</span><span class="err" data-err></span></div>' +
+          (isLogin ? "" :
+            '<div class="f2">' +
+              '<div class="fld" data-fld="name"><label for="a-name">Full name</label>' +
+                '<input id="a-name" name="name" type="text" autocomplete="name" placeholder="Ada Okafor">' +
+                '<span class="err" data-err></span></div>' +
+              '<div class="fld" data-fld="company"><label for="a-company">Organisation</label>' +
+                '<input id="a-company" name="company" type="text" autocomplete="organization" placeholder="Company or agency">' +
+                '<span class="err" data-err></span></div>' +
+            "</div>") +
+        "</div>" +
+        '<p class="auth-ok" id="auth-ok" hidden>Check your inbox — confirm the link to activate your account.</p>' +
+        '<p class="form-note">Accounts hold your bids, listings and match alerts. Passwords are handled by Supabase Auth; the first 3 bids each month are free.</p>' +
+      "</div>" +
+      '<div class="m-foot">' +
+        '<button type="button" class="btn btn-ghost" data-act="auth-mode" data-mode="' +
+          (isLogin ? "signup" : "login") + '">' + (isLogin ? "Create account" : "Sign in instead") + "</button>" +
+        '<button type="submit" class="btn btn-primary">' + (isLogin ? "Sign in" : "Create account") + "</button>" +
+      "</div></form>"
+    );
+  }
+
+  function openAccountModal() {
+    const u = state.session;
+    if (!u) return openAuthModal("login");
+    openModal(
+      '<div class="m-head"><div><p class="m-kicker">Account</p>' +
+        '<h2 class="m-title" id="modal-title">' + Mend.esc(u.email) + "</h2></div>" +
+        '<button class="icon-btn" data-act="close-modal" aria-label="Close">' + icon("x") + "</button></div>" +
+      '<div class="m-body">' +
+        '<div class="acct-summary"><span class="acct-k">Signed in</span>' +
+          '<span class="acct-v">Bids, listings and match alerts sync to this account.</span></div>' +
+        '<p class="form-note">Sign out to browse the exchange as a guest. Demo listings stay visible either way.</p>' +
+      "</div>" +
+      '<div class="m-foot"><button type="button" class="btn btn-ghost" data-act="close-modal">Close</button>' +
+        '<button type="button" class="btn btn-primary" data-act="logout">Sign out</button></div>'
+    );
+  }
+
+  async function doLogout() {
+    try { await Mend.db.signOut(); } catch (e) { /* local session clears either way */ }
+    closeModal();
+  }
+
+  async function submitAuth(form) {
+    const mode = form.dataset.mode;
+    const email = form.elements.email.value.trim();
+    const password = form.elements.password.value;
+    clearErrors(form);
+    const okNote = $("auth-ok");
+    if (okNote) okNote.hidden = true;
+
+    let bad = false;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError(form, "email", "Enter a valid email address.");
+      bad = true;
+    }
+    if (password.length < 6) {
+      setError(form, "password", "Use at least 6 characters.");
+      bad = true;
+    }
+    if (mode === "signup" && form.elements.name.value.trim().length < 2) {
+      setError(form, "name", "Enter your name.");
+      bad = true;
+    }
+    if (bad) return;
+
+    const btn = form.querySelector('button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.textContent = "Working…"; }
+    try {
+      if (mode === "login") {
+        await Mend.db.signIn(email, password);
+        closeModal();
+      } else {
+        const res = await Mend.db.signUp(email, password, {
+          fullName: form.elements.name.value.trim(),
+          company: form.elements.company.value.trim(),
+        });
+        if (res && res.needsConfirmation) {
+          if (okNote) okNote.hidden = false;
+          if (btn) { btn.textContent = "Check inbox"; }
+        } else {
+          closeModal();
+        }
+      }
+    } catch (e) {
+      setError(form, "password", friendlyAuthError(e.message));
+      if (btn) { btn.disabled = false; btn.textContent = mode === "login" ? "Sign in" : "Create account"; }
+      return;
+    }
+    if (btn && !(mode === "signup")) { btn.disabled = false; btn.textContent = "Sign in"; }
+  }
+
+  async function refreshRemoteActivity() {
+    if (!remoteActive()) return;
+    const acts = await Mend.db.fetchActivity();
+    if (acts && acts.length) {
+      state.activity = acts;
+      Mend.renderActivity();
+    }
+  }
+
 
   /* Leaflet work is pushed past first paint; the map still initialises on its
      own so deep links and the "On map" action never depend on scrolling. */
@@ -110,6 +310,9 @@ window.Mend = window.Mend || {};
     if (act === "close-drawer") return closeDrawer();
     if (act === "theme") return toggleTheme();
     if (act === "alerts") return toggleAlerts();
+    if (act === "account") return state.session ? openAccountModal() : openAuthModal("login");
+    if (act === "auth-mode") return openAuthModal(el.dataset.mode);
+    if (act === "logout") return doLogout();
     if (act === "reset-filters") return resetFilters();
     if (act === "reset-dir") return resetDirectory();
     if (act === "fit-map") { closeAlerts(); return Mend.map && Mend.map.fit(); }
@@ -182,6 +385,7 @@ window.Mend = window.Mend || {};
     if (form.dataset.form === "bid") submitBid(form);
     if (form.dataset.form === "contact") submitContact(form);
     if (form.dataset.form === "post") submitPost(form);
+    if (form.dataset.form === "auth") submitAuth(form);
   }
 
   /* ------------------------------- filters ----------------------------- */
@@ -242,9 +446,14 @@ window.Mend = window.Mend || {};
 
   function toggleWatch(id) {
     const i = state.watch.indexOf(id);
-    if (i === -1) state.watch.push(id);
+    const on = i === -1;
+    if (on) state.watch.push(id);
     else state.watch.splice(i, 1);
-    Mend.save("watch");
+    if (remoteActive() && authed()) {
+      Mend.db.setWatch(id, on).catch((e) => Mend.toast(friendlyAuthError(e.message)));
+    } else {
+      Mend.save("watch");
+    }
     Mend.renderAlerts();
   }
 
@@ -451,6 +660,9 @@ window.Mend = window.Mend || {};
     }
 
     const suggested = Math.round((d.budget * 0.94) / 1000) * 1000;
+    const storageNote = remoteActive()
+      ? "No fee to bid. Commission applies only when a deal is matched. Bids are stored against your account."
+      : "No fee to bid. Commission applies only when a deal is matched. This prototype stores the bid in your browser.";
     openModal(
       '<div class="m-head"><div><p class="m-kicker">Place bid</p>' +
         '<h2 class="m-title" id="modal-title">' + Mend.esc(d.title) + "</h2></div>" +
@@ -476,7 +688,7 @@ window.Mend = window.Mend || {};
               '<textarea id="bid-note" name="note" maxlength="400" placeholder="Certifications, capacity, shipping terms…"></textarea>' +
               '<span class="hint">Optional · max 400 characters</span><span class="err" data-err></span></div>' +
           "</div>" +
-          '<p class="form-note">No fee to bid. Commission applies only when a deal is matched. This prototype stores the bid in your browser.</p>' +
+          '<p class="form-note">' + storageNote + "</p>" +
         "</div>" +
         '<div class="m-foot"><button type="button" class="btn btn-ghost" data-act="close-modal">Cancel</button>' +
           '<button type="submit" class="btn btn-primary">Submit bid</button></div>' +
@@ -553,6 +765,16 @@ window.Mend = window.Mend || {};
       return;
     }
 
+    if (remoteActive()) {
+      if (!authed()) {
+        Mend.toast("Sign in to place bids — your first 3 each month are free.");
+        openAuthModal("login", "Sign in to place bids on the live exchange.");
+        return;
+      }
+      submitBidRemote(form, d, { price, days, note });
+      return;
+    }
+
     state.bids.unshift({
       id: Mend.uid("b"),
       demandId: id,
@@ -575,9 +797,42 @@ window.Mend = window.Mend || {};
     Mend.renderRadar();
   }
 
+  async function submitBidRemote(form, d, values) {
+    const btn = form.querySelector('button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.textContent = "Submitting…"; }
+    try {
+      const row = await Mend.db.createBid({
+        demandId: d.rowId || d.id,
+        price: values.price,
+        days: values.days,
+        note: values.note,
+      });
+      state.bids.unshift(row);
+      d.bids = (d.bids || 0) + 1;
+      await refreshRemoteActivity();
+      Mend.renderBids();
+      Mend.renderDemands();
+      Mend.renderDesk();
+      Mend.renderRadar();
+      closeModal();
+      Mend.toast("Bid submitted — pending review by " + d.buyer + ".", "ok");
+      if (state.selected === d.id && $("drawer").classList.contains("is-open")) {
+        openDrawer(d.id, { fly: false });
+      }
+    } catch (e) {
+      const msg = friendlyAuthError(e.message);
+      if (/limit/i.test(msg)) clearErrors(form);
+      Mend.toast(msg);
+      if (btn) { btn.disabled = false; btn.textContent = "Submit bid"; }
+      return;
+    }
+    if (btn) { btn.disabled = false; btn.textContent = "Submit bid"; }
+  }
+
   function withdrawBid(bidId) {
     const bid = state.bids.find((b) => b.id === bidId);
     if (!bid || bid.status !== "pending") return;
+    if (remoteActive() && authed()) return withdrawBidRemote(bid);
     bid.status = "withdrawn";
     Mend.save("bids");
     const d = Mend.demandById(bid.demandId);
@@ -590,6 +845,26 @@ window.Mend = window.Mend || {};
       openDrawer(d.id, { fly: false });
     }
     Mend.renderRadar();
+  }
+
+  async function withdrawBidRemote(bid) {
+    try {
+      await Mend.db.withdrawBid(bid.id);
+      bid.status = "withdrawn";
+      const d = Mend.demandById(bid.demandId);
+      if (d) d.bids = Math.max(0, (d.bids || 0) - 1);
+      await refreshRemoteActivity();
+      Mend.renderBids();
+      Mend.renderDemands();
+      Mend.renderDesk();
+      Mend.renderRadar();
+      Mend.toast("Bid withdrawn.");
+      if (d && state.selected === d.id && $("drawer").classList.contains("is-open")) {
+        openDrawer(d.id, { fly: false });
+      }
+    } catch (e) {
+      Mend.toast(friendlyAuthError(e.message));
+    }
   }
 
   /* ---------------------------- contact flow --------------------------- */
@@ -737,6 +1012,16 @@ window.Mend = window.Mend || {};
     if (spec.length > 160) { setError(form, "spec", "Keep the specification under 160 characters."); bad = true; }
     if (bad) return;
 
+    if (remoteActive()) {
+      if (!authed()) {
+        Mend.toast("Sign in to publish a demand to the exchange.");
+        openAuthModal("login", "Sign in to publish demand listings on the live exchange.");
+        return;
+      }
+      submitPostRemote(form, { title, category, qty, regionId, city, budget, deadline, spec });
+      return;
+    }
+
     const coverage = D.MANUFACTURERS.filter((m) =>
       m.verified && m.categories.includes(category) && m.region === regionId
     ).length;
@@ -788,6 +1073,65 @@ window.Mend = window.Mend || {};
         setTimeout(() => row.classList.remove("is-new"), 2600);
       }
     }, 220);
+  }
+
+  async function submitPostRemote(form, v) {
+    const btn = form.querySelector('button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.textContent = "Publishing…"; }
+
+    const cat = Mend.catById(v.category);
+    const region = D.REGIONS.find((r) => r.id === v.regionId) || D.REGIONS[0];
+    const coverage = D.MANUFACTURERS.filter((m) =>
+      m.verified && m.categories.includes(v.category) && m.region === v.regionId
+    ).length;
+    const severity = coverage === 0 ? "acute" : coverage === 1 ? "tight" : "healthy";
+    const jitter = () => (Math.random() - 0.5) * 2;
+
+    try {
+      const row = await Mend.db.createDemand({
+        title: v.title,
+        buyer: "Your organisation",
+        buyerType: "Buyer",
+        category: v.category,
+        qty: v.qty,
+        unit: cat.unit,
+        spec: v.spec || "Specification to be confirmed",
+        city: v.city,
+        country: region.id,
+        region: region.id,
+        lat: region.lat + jitter(),
+        lng: region.lng + jitter(),
+        deadline: v.deadline,
+        budget: v.budget,
+        severity,
+        note: "Posted by you. " + coverage + " verified maker" + (coverage === 1 ? "" : "s") +
+          " cover this category in " + region.id + ".",
+      });
+      row.mine = true;
+      D.DEMANDS.unshift(row);
+      await refreshRemoteActivity();
+
+      state.filters = { q: "", category: "all", region: "all", severity: "all", verified: false };
+      state.sort = "severity";
+      populateSelects();
+      Mend.renderAll();
+      if (Mend.map) { Mend.map.render(); Mend.map.fit(); }
+      closeModal();
+      Mend.toast("Demand published — it is live on the exchange.", "ok");
+
+      setTimeout(() => {
+        const section = $("demands");
+        if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
+        const rowEl = document.querySelector('tr[data-demand="' + row.id + '"]');
+        if (rowEl) {
+          rowEl.classList.add("is-new");
+          setTimeout(() => rowEl.classList.remove("is-new"), 2600);
+        }
+      }, 220);
+    } catch (e) {
+      Mend.toast(friendlyAuthError(e.message));
+      if (btn) { btn.disabled = false; btn.textContent = "Publish demand"; }
+    }
   }
 
   /* ------------------------------ symbiosis ---------------------------- */

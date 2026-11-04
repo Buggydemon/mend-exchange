@@ -53,6 +53,7 @@
   <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></symbol>
   <symbol id="i-external" viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
   <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
 </svg>
 
 <header class="hdr" id="top">
@@ -104,6 +105,9 @@
           </a>
         </div>
       </div>
+      <button class="icon-btn" id="auth-btn" data-act="account" aria-label="Account" hidden>
+        <svg class="ic" aria-hidden="true"><use href="#i-user"/></svg>
+      </button>
       <button class="icon-btn" id="theme-toggle" data-act="theme" aria-label="Switch theme">
         <svg class="ic icon-sun" aria-hidden="true"><use href="#i-sun"/></svg>
         <svg class="ic icon-moon" aria-hidden="true"><use href="#i-moon"/></svg>
@@ -123,7 +127,7 @@
     <span class="tick"><span class="tick-k">Verified makers</span><span class="tick-v num" id="tick-makers">—</span></span>
     <span class="tick tick-opt"><span class="tick-k">Regions</span><span class="tick-v num" id="tick-regions">—</span></span>
     <span class="tick tick-opt"><span class="tick-k">Median lead</span><span class="tick-v num" id="tick-lead">—</span></span>
-    <span class="ticker-end"><span class="live-tag"><i class="live-dot"></i>Demo data</span><span class="tick-date" id="today">—</span></span>
+    <span class="ticker-end"><span class="live-tag"><i class="live-dot"></i><span id="live-tag">Demo data</span></span><span class="tick-date" id="today">—</span></span>
   </div>
 </div>
 
@@ -320,7 +324,7 @@
           </table>
         </div>
         <div class="empty empty-slim" id="bids-empty">
-          <p>No bids yet. Open any demand and place one — it stays in this browser.</p>
+          <p id="bids-empty-text">No bids yet. Open any demand and place one — it stays in this browser.</p>
         </div>
       </div>
     </div>
@@ -494,8 +498,8 @@
       </div>
     </div>
     <div class="footer-meta">
-      <p><span class="mono-label">Prototype</span> All figures are illustrative. Bids, posted demands, watchlists and theme live in this browser only.</p>
-      <p><span class="mono-label">Stack</span> Vanilla JS · Leaflet 1.9 · IBM Plex. No build step, no framework.</p>
+      <p><span class="mono-label">Prototype</span> <span id="footer-data-note">All figures are illustrative. Bids, posted demands, watchlists and theme live in this browser only.</span></p>
+      <p><span class="mono-label">Stack</span> Vanilla JS · Leaflet 1.9 · IBM Plex · Supabase when configured. No build step, no framework.</p>
     </div>
     <p class="footer-copy">© <span id="year">2026</span> Mend Exchange</p>
   </div>
@@ -524,8 +528,10 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+<script src="js/config.js"></script>
 <script src="js/data.js"></script>
 <script src="js/core.js"></script>
+<script src="js/db.js"></script>
 <script src="js/map.js"></script>
 <script src="js/render.js"></script>
 <script src="js/app.js"></script>

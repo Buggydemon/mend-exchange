@@ -1,0 +1,1457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mend — Where the world's supply gaps meet the world's makers</title>
+<meta name="description" content="Mend is a B2B Supply-Gap Exchange connecting verified manufacturers with buyers of critical industrial goods — with market data, certification and financing attached." />
+<meta name="theme-color" content="#070e22" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23f59e0b'/%3E%3Cpath d='M8 22V10l8 7 8-7v12' stroke='%23070e22' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+
+<!--
+  =====================================================================
+  MEND — B2B Supply-Gap Exchange · single-file prototype
+  ---------------------------------------------------------------------
+  Problem : the global market for critical industrial goods is fragmented
+            and opaque, so desperate demand sits on one side and idle /
+            undervalued supply sits on the other.
+  Product : marketplace + intelligence platform. Modules in this file:
+            1. Gap Radar (Leaflet map)       4. Raw-Material Symbiosis
+            2. Verified Manufacturer Registry 5. Financing & Incentives
+            3. Tender & Demand Board (bids)   6. Dashboard + Match Alerts
+  Stack   : HTML5 · Vanilla JS · Tailwind (CDN) · Lucide (CDN) · Inter ·
+            Leaflet.js. No custom external CSS — Leaflet's own stylesheet
+            is the only linked CSS because the map cannot render without it.
+  Data    : all mock (see "MOCK DATA" in the script). Bids, posted demands,
+            alerts, activity and theme persist in localStorage (try/catch).
+  =====================================================================
+-->
+
+<!-- Apply the saved theme before first paint so there is no light/dark flash. -->
+<script>
+  (function () {
+    try {
+      var saved = localStorage.getItem('mend.theme');
+      var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      if (saved === 'dark' || (!saved && prefersDark)) document.documentElement.classList.add('dark');
+    } catch (e) { /* storage blocked — fall back to light */ }
+  })();
+</script>
+
+<!-- Tailwind Play CDN + theme extension (deep navy palette, Inter, class-based dark mode). -->
+<script src="https://cdn.tailwindcss.com/3.4.17" integrity="sha384-igm5BeiBt36UU4gqwWS7imYmelpTsZlQ45FZf+XBn9MuJbn4nQr7yx1yFydocC/K" crossorigin="anonymous"></script>
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui', 'Segoe UI', 'sans-serif'] },
+        colors: { navy: { 700: '#1c2b4d', 800: '#13203b', 900: '#0c1630', 950: '#070e22' } }
+      }
+    }
+  };
+</script>
+
+<!-- Inter font -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+<!-- Leaflet (map) and Lucide (icons), version-pinned with Subresource Integrity. -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/lucide@1.66.0/dist/umd/lucide.min.js" integrity="sha384-Z6lHbMYcsXeWgvgnOFekAhjBtVQuTfjyNBGb7d7mrYjt5DNJspJJ9GBp9Kar/z7w" crossorigin="anonymous"></script>
+
+<!-- Reusable component classes compiled by the Tailwind CDN. -->
+<style type="text/tailwindcss">
+  @layer components {
+    .input { @apply w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 dark:border-white/10 dark:bg-navy-950 dark:text-slate-100; }
+    .card { @apply rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-navy-900; }
+    .btn-primary { @apply inline-flex items-center justify-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-amber-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60 disabled:cursor-not-allowed disabled:opacity-50; }
+    .btn-ghost { @apply inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-amber-500 hover:text-amber-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60 dark:border-white/10 dark:text-slate-200 dark:hover:text-amber-400; }
+    .badge { @apply inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold; }
+    .label { @apply mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300; }
+    .eyebrow { @apply text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400; }
+    .title { @apply mt-1 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl dark:text-white; }
+    .lede { @apply mt-2 max-w-2xl text-sm text-slate-500 dark:text-slate-400; }
+    .nav-link { @apply rounded-md px-3 py-2 transition hover:bg-white/5 hover:text-white; }
+  }
+</style>
+
+<!-- Plain CSS for things utilities can't reach (Leaflet internals, keyframes, scrollbars). -->
+<style>
+  html { scroll-behavior: smooth; }
+  section[id] { scroll-margin-top: 128px; }
+  @media (max-width: 767px) { section[id] { scroll-margin-top: 72px; } }
+  .hero-grid {
+    background-image: linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(ellipse at 70% 0%, #000 30%, transparent 75%);
+  }
+  .leaflet-container { font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #e2e8f0; }
+  .dark .leaflet-container { background: #0b1220; }
+  .leaflet-popup-content-wrapper { border-radius: 14px; }
+  .leaflet-popup-content { margin: 14px 16px; }
+  .dark .leaflet-popup-content-wrapper, .dark .leaflet-popup-tip { background: #0c1630; color: #e2e8f0; box-shadow: 0 12px 30px rgba(0,0,0,.55); }
+  .dark .leaflet-container a.leaflet-popup-close-button { color: #94a3b8; }
+  .dark .leaflet-bar a { background: #0c1630; color: #e2e8f0; border-color: rgba(255,255,255,.1); }
+  .dark .leaflet-control-attribution { background: rgba(7,14,34,.85); color: #94a3b8; }
+  .dark .leaflet-control-attribution a { color: #fbbf24; }
+  /* Acute-gap dots pulse so the eye lands on the worst shortages first. */
+  .gap-acute { animation: gapPulse 1.8s ease-in-out infinite; }
+  @keyframes gapPulse { 0%,100% { stroke-opacity: .95; stroke-width: 2px; } 50% { stroke-opacity: .2; stroke-width: 12px; } }
+  /* Factory pins: blue diamond = verified, grey = pending verification. */
+  .factory-pin { width: 12px; height: 12px; border-radius: 3px; transform: rotate(45deg); background: #3b82f6; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.45); }
+  .factory-pin.unverified { background: #94a3b8; }
+  .dark .factory-pin { border-color: #0c1630; }
+  .thin-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+  .thin-scroll::-webkit-scrollbar-thumb { background: rgba(148,163,184,.35); border-radius: 9px; }
+  .modal-in { animation: modalIn .18s ease-out; }
+  @keyframes modalIn { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+  .drawer { transition: transform .25s ease; }
+  .toast-in { animation: toastIn .2s ease-out; }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  input[type=range], input[type=checkbox] { accent-color: #f59e0b; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  }
+</style>
+</head>
+
+<body class="bg-slate-50 font-sans text-slate-800 antialiased dark:bg-navy-950 dark:text-slate-200">
+
+<!-- =========================== HEADER =========================== -->
+<header class="sticky top-0 z-40 border-b border-white/10 bg-navy-950/95 text-white backdrop-blur">
+  <div class="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 sm:px-6">
+    <a href="#top" class="flex items-center gap-2 text-lg font-extrabold tracking-tight">
+      <span class="grid h-8 w-8 place-items-center rounded-lg bg-amber-500 text-navy-950"><i data-lucide="link-2" class="h-4 w-4"></i></span>
+      Mend
+    </a>
+    <nav id="desktop-nav" class="ml-6 hidden items-center gap-1 text-sm text-slate-300 lg:flex" aria-label="Primary">
+      <a href="#radar" class="nav-link">Gap Radar</a>
+      <a href="#tenders" class="nav-link">Tenders</a>
+      <a href="#suppliers" class="nav-link">Suppliers</a>
+      <a href="#symbiosis" class="nav-link">Symbiosis</a>
+      <a href="#financing" class="nav-link">Financing</a>
+      <a href="#dashboard" class="nav-link">Dashboard</a>
+    </nav>
+    <div class="ml-auto flex items-center gap-1.5">
+      <!-- Match alerts: categories you supply → matching open demand -->
+      <div class="relative" id="alerts-wrap">
+        <button id="alerts-btn" class="relative grid h-10 w-10 place-items-center rounded-lg text-slate-300 hover:bg-white/5 hover:text-white" aria-label="Match alerts" aria-expanded="false" aria-controls="alerts-panel">
+          <i data-lucide="bell" class="h-5 w-5"></i>
+          <span id="alerts-count" class="absolute right-1 top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-navy-950">0</span>
+        </button>
+        <div id="alerts-panel" class="absolute right-0 mt-2 hidden w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-800 shadow-2xl dark:border-white/10 dark:bg-navy-900 dark:text-slate-100"></div>
+      </div>
+      <button id="theme-toggle" class="grid h-10 w-10 place-items-center rounded-lg text-slate-300 hover:bg-white/5 hover:text-white" aria-label="Toggle dark mode">
+        <i data-lucide="moon" class="h-5 w-5 dark:hidden"></i>
+        <i data-lucide="sun" class="hidden h-5 w-5 dark:block"></i>
+      </button>
+      <button data-action="post-demand" class="btn-primary ml-1 hidden sm:inline-flex"><i data-lucide="plus" class="h-4 w-4"></i>Post demand</button>
+      <button id="menu-btn" class="grid h-10 w-10 place-items-center rounded-lg text-slate-300 hover:bg-white/5 lg:hidden" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-nav">
+        <i data-lucide="menu" class="h-5 w-5"></i>
+      </button>
+    </div>
+  </div>
+  <nav id="mobile-nav" class="hidden border-t border-white/10 px-4 py-3 lg:hidden" aria-label="Mobile">
+    <div class="grid grid-cols-2 gap-1 text-sm text-slate-300">
+      <a href="#radar" class="nav-link">Gap Radar</a>
+      <a href="#tenders" class="nav-link">Tenders</a>
+      <a href="#suppliers" class="nav-link">Suppliers</a>
+      <a href="#symbiosis" class="nav-link">Symbiosis</a>
+      <a href="#financing" class="nav-link">Financing</a>
+      <a href="#dashboard" class="nav-link">Dashboard</a>
+    </div>
+    <button data-action="post-demand" class="btn-primary mt-3 w-full sm:hidden"><i data-lucide="plus" class="h-4 w-4"></i>Post demand</button>
+  </nav>
+</header>
+
+<!-- ============================ HERO ============================ -->
+<section id="top" class="relative overflow-hidden bg-navy-950 text-white">
+  <div class="hero-grid absolute inset-0" aria-hidden="true"></div>
+  <div class="absolute -right-40 -top-48 h-[560px] w-[560px] rounded-full bg-amber-500/10 blur-3xl" aria-hidden="true"></div>
+  <div class="relative mx-auto max-w-7xl px-4 pb-10 pt-14 sm:px-6 lg:pt-20">
+    <div class="max-w-3xl">
+      <span class="inline-flex items-center gap-2 rounded-full border border-amber-500/25 bg-amber-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-amber-400">
+        <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400"></span>B2B Supply-Gap Exchange
+      </span>
+      <h1 class="mt-5 text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl">Where the world's supply gaps meet the world's <span class="text-amber-400">makers</span>.</h1>
+      <p class="mt-5 max-w-2xl text-base text-slate-300 sm:text-lg">Mend connects verified manufacturers — especially local producers in underserved regions — with buyers of critical goods, and attaches the market data, certification and financing that make deals safe.</p>
+    </div>
+    <form id="hero-search" class="mt-8 flex max-w-3xl flex-col gap-2 rounded-2xl border border-white/10 bg-white/5 p-2 sm:flex-row" role="search">
+      <label class="flex flex-1 items-center gap-3 px-3">
+        <i data-lucide="search" class="h-5 w-5 shrink-0 text-slate-400"></i>
+        <span class="sr-only">Search a product or region</span>
+        <input id="hero-search-input" type="search" autocomplete="off" placeholder="Search a product or region — transformers, Lagos, RUTF…" class="w-full bg-transparent py-3 text-white outline-none placeholder:text-slate-500" />
+      </label>
+      <button type="submit" class="btn-primary !rounded-xl !px-6 !py-3">Scan the radar <i data-lucide="arrow-right" class="h-4 w-4"></i></button>
+    </form>
+    <div id="hero-chips" class="mt-4 flex flex-wrap gap-2"></div>
+    <dl id="hero-stats" class="mt-10 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 md:grid-cols-4"></dl>
+  </div>
+</section>
+
+<!-- ===================== GLOBAL FILTER BAR ====================== -->
+<!-- One filter state drives the map, hotspots, tender board, suppliers and financing fit. -->
+<div id="filter-bar" class="z-30 border-b border-slate-200 bg-white/90 backdrop-blur md:sticky md:top-16 dark:border-white/10 dark:bg-navy-900/90">
+  <div class="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-4 py-3 sm:px-6">
+    <span class="mr-1 hidden items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500 sm:inline-flex dark:text-slate-400"><i data-lucide="sliders-horizontal" class="h-4 w-4"></i>Filters</span>
+    <label class="relative min-w-[180px] flex-1">
+      <span class="sr-only">Search</span>
+      <i data-lucide="search" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"></i>
+      <input id="f-search" type="search" autocomplete="off" placeholder="Product, buyer, city, certification…" class="input pl-9" />
+    </label>
+    <label class="sr-only" for="f-category">Product category</label>
+    <select id="f-category" class="input !w-auto"></select>
+    <label class="sr-only" for="f-region">Region</label>
+    <select id="f-region" class="input !w-auto"></select>
+    <label class="inline-flex cursor-pointer select-none items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-white/10">
+      <input id="f-verified" type="checkbox" class="h-4 w-4" /> Verified only
+    </label>
+    <button id="f-reset" type="button" class="px-2 text-sm text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-400">Reset</button>
+    <span id="f-summary" class="w-full text-xs text-slate-500 sm:ml-auto sm:w-auto dark:text-slate-400" aria-live="polite"></span>
+  </div>
+</div>
+
+<main>
+<!-- ======================= 01 · GAP RADAR ======================= -->
+<section id="radar" class="mx-auto max-w-7xl px-4 py-12 sm:px-6">
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <p class="eyebrow">01 · Gap Radar</p>
+      <h2 class="title">Where demand is outrunning supply</h2>
+      <p class="lede">Signals aggregated from public tenders, procurement notices, infrastructure plans and NGO supply calls. Dot size = deal value · colour = gap severity · diamonds = factories.</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-600 dark:text-slate-300">
+      <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full bg-red-500"></span>Acute gap</span>
+      <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full bg-amber-500"></span>Tight</span>
+      <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full bg-green-500"></span>Healthy</span>
+      <label class="inline-flex cursor-pointer items-center gap-1.5"><input id="toggle-factories" type="checkbox" checked class="h-3.5 w-3.5" /><span class="h-2.5 w-2.5 rotate-45 rounded-[2px] bg-blue-500"></span>Factories</label>
+    </div>
+  </div>
+  <div class="mt-6 grid gap-4 lg:grid-cols-[1fr_340px]">
+    <div class="card relative overflow-hidden">
+      <div id="radar-map" class="h-[420px] sm:h-[520px]" role="region" aria-label="Gap Radar world map"></div>
+      <div id="map-empty" class="pointer-events-none absolute inset-0 z-[500] hidden place-items-center">
+        <div class="rounded-xl bg-white/95 px-4 py-3 text-sm shadow-lg dark:bg-navy-900/95">No demand matches these filters.</div>
+      </div>
+    </div>
+    <aside class="card flex max-h-[520px] flex-col" aria-label="Hotspots">
+      <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-white/5">
+        <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Hotspots</h3>
+        <span id="hotspot-count" class="text-xs text-slate-500 dark:text-slate-400"></span>
+      </div>
+      <ul id="hotspot-list" class="thin-scroll flex-1 divide-y divide-slate-100 overflow-y-auto dark:divide-white/5"></ul>
+    </aside>
+  </div>
+</section>
+
+<!-- =================== 02 · TENDER & DEMAND BOARD =================== -->
+<section id="tenders" class="border-y border-slate-200 bg-slate-100/70 dark:border-white/5 dark:bg-navy-900/40">
+  <div class="mx-auto max-w-7xl px-4 py-12 sm:px-6">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <p class="eyebrow">02 · Tender &amp; Demand Board</p>
+        <h2 class="title">Open demands — reverse auction</h2>
+        <p class="lede">Buyers post quantity, spec, deadline and budget. Producers bid down. Local producers win on price + logistics; international buyers get compliance-ready documentation.</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <label class="sr-only" for="tender-sort">Sort demands</label>
+        <select id="tender-sort" class="input !w-auto">
+          <option value="severity">Sort: Most acute gap</option>
+          <option value="deadline">Sort: Closing soonest</option>
+          <option value="budget">Sort: Largest budget</option>
+        </select>
+        <button data-action="post-demand" class="btn-ghost"><i data-lucide="plus" class="h-4 w-4"></i>Post demand</button>
+      </div>
+    </div>
+    <div id="tender-grid" class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3"></div>
+    <div id="tender-empty" class="card mt-6 hidden px-6 py-12 text-center text-sm text-slate-500 dark:text-slate-400">No open demands match your filters. <button id="tender-reset" class="font-semibold text-amber-600 hover:underline dark:text-amber-400">Reset filters</button></div>
+
+    <!-- My Bids: everything you've submitted, persisted in localStorage -->
+    <div id="my-bids" class="card mt-10 overflow-hidden">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-white/5">
+        <div>
+          <h3 class="font-semibold text-slate-900 dark:text-white">My Bids</h3>
+          <p id="freemium-note" class="text-xs text-slate-500 dark:text-slate-400"></p>
+        </div>
+        <span id="mybids-count" class="badge bg-amber-500/15 text-amber-700 dark:text-amber-300"></span>
+      </div>
+      <div class="thin-scroll overflow-x-auto">
+        <table class="w-full min-w-[680px] text-sm">
+          <thead class="bg-slate-50 text-left text-[11px] uppercase tracking-wider text-slate-500 dark:bg-navy-950/50 dark:text-slate-400">
+            <tr><th class="px-5 py-3 font-semibold">Demand</th><th class="px-3 py-3 font-semibold">Your price</th><th class="px-3 py-3 font-semibold">Delivery</th><th class="px-3 py-3 font-semibold">Submitted</th><th class="px-3 py-3 font-semibold">Status</th><th class="px-5 py-3"><span class="sr-only">Actions</span></th></tr>
+          </thead>
+          <tbody id="mybids-body" class="divide-y divide-slate-100 dark:divide-white/5"></tbody>
+        </table>
+      </div>
+      <div id="mybids-empty" class="px-5 py-10 text-center text-sm text-slate-500 dark:text-slate-400">No bids yet. Pick an open demand above and press <b class="text-slate-700 dark:text-slate-200">Place bid</b>.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 03 · VERIFIED MANUFACTURER REGISTRY ============ -->
+<section id="suppliers" class="mx-auto max-w-7xl px-4 py-12 sm:px-6">
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <p class="eyebrow">03 · Verified Manufacturer Registry</p>
+      <h2 class="title">Supplier directory</h2>
+      <p class="lede">Certificates (IEC / ISO / NAFDAC / SON), monthly capacity, lead times and export readiness. A "Verified" badge is only granted after a human check. Price index: 1.00 = global median, lower is cheaper.</p>
+    </div>
+  </div>
+  <div class="card mt-6 grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div><label class="label" for="d-cert">Certification</label><select id="d-cert" class="input"></select></div>
+    <div><label class="label" for="d-country">Country</label><select id="d-country" class="input"></select></div>
+    <div>
+      <label class="label" for="d-lead">Max lead time: <span id="d-lead-out" class="text-amber-600 dark:text-amber-400">120 days</span></label>
+      <input id="d-lead" type="range" min="14" max="120" step="1" value="120" class="mt-2 w-full" />
+    </div>
+    <div><label class="label" for="d-sort">Sort by</label>
+      <select id="d-sort" class="input">
+        <option value="verified">Verified first</option>
+        <option value="lead">Shortest lead time</option>
+        <option value="price">Lowest price index</option>
+        <option value="capacity">Highest capacity</option>
+      </select>
+    </div>
+  </div>
+  <div id="supplier-grid" class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3"></div>
+  <div id="supplier-empty" class="card mt-6 hidden px-6 py-12 text-center text-sm text-slate-500 dark:text-slate-400">No suppliers match. Try widening lead time or clearing filters.</div>
+</section>
+
+<!-- ================= 04 · RAW-MATERIAL SYMBIOSIS ================= -->
+<section id="symbiosis" class="bg-navy-950 text-white">
+  <div class="mx-auto max-w-7xl px-4 py-12 sm:px-6">
+    <p class="text-xs font-semibold uppercase tracking-wider text-amber-400">04 · Raw-Material Symbiosis Match</p>
+    <h2 class="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">One factory's waste is another's input</h2>
+    <p class="mt-2 max-w-2xl text-sm text-slate-400">Mend pairs by-product streams with plants that need them — battery recycler output to cell-material refiners, steel offcuts to roofing makers. Waste becomes revenue; buyers cut feedstock cost and carbon.</p>
+    <div id="symbiosis-list" class="mt-6 grid gap-4 md:grid-cols-2"></div>
+  </div>
+</section>
+
+<!-- ================ 05 · FINANCING & INCENTIVES HUB ================ -->
+<section id="financing" class="mx-auto max-w-7xl px-4 py-12 sm:px-6">
+  <p class="eyebrow">05 · Financing &amp; Incentives Hub</p>
+  <h2 class="title">Funding that gets the deal over the line</h2>
+  <p class="lede">Mend brokers between the deal and its funding: DFI trade credit, export incentives, carbon pre-finance and localisation schemes. Highlighted cards fit your current filters. Program fit is indicative — confirm eligibility with each provider.</p>
+  <div id="financing-grid" class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"></div>
+</section>
+
+<!-- ======================= 06 · DASHBOARD ======================= -->
+<section id="dashboard" class="border-y border-slate-200 bg-slate-100/70 dark:border-white/5 dark:bg-navy-900/40">
+  <div class="mx-auto max-w-7xl px-4 py-12 sm:px-6">
+    <p class="eyebrow">06 · Dashboard</p>
+    <h2 class="title">Your deal desk</h2>
+    <p class="lede">Active bids, matched deals, commission ledger and a live activity log.</p>
+    <div id="kpi-grid" class="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4"></div>
+    <div class="mt-4 grid gap-4 lg:grid-cols-[1.25fr_1fr]">
+      <div class="card overflow-hidden">
+        <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-white/5">
+          <h3 class="font-semibold text-slate-900 dark:text-white">Commission ledger</h3>
+          <span class="text-xs text-slate-500 dark:text-slate-400">Matched deals</span>
+        </div>
+        <div class="thin-scroll overflow-x-auto">
+          <table class="w-full min-w-[560px] text-sm">
+            <thead class="bg-slate-50 text-left text-[11px] uppercase tracking-wider text-slate-500 dark:bg-navy-950/50 dark:text-slate-400">
+              <tr><th class="px-5 py-3 font-semibold">Deal</th><th class="px-3 py-3 font-semibold">Value</th><th class="px-3 py-3 font-semibold">Rate</th><th class="px-3 py-3 font-semibold">Commission</th><th class="px-5 py-3 font-semibold">Status</th></tr>
+            </thead>
+            <tbody id="ledger-body" class="divide-y divide-slate-100 dark:divide-white/5"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card flex flex-col overflow-hidden">
+        <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-white/5">
+          <h3 class="font-semibold text-slate-900 dark:text-white">Recent activity</h3>
+          <span class="inline-flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500"></span>Live</span>
+        </div>
+        <ol id="activity-log" class="thin-scroll max-h-[360px] flex-1 divide-y divide-slate-100 overflow-y-auto dark:divide-white/5"></ol>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= REVENUE MODEL ======================= -->
+<section id="model" class="mx-auto max-w-7xl px-4 py-12 sm:px-6">
+  <p class="eyebrow">How Mend earns</p>
+  <h2 class="title">Revenue model</h2>
+  <div id="revenue-grid" class="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5"></div>
+</section>
+</main>
+
+<!-- =========================== FOOTER =========================== -->
+<footer class="bg-navy-950 text-sm text-slate-400">
+  <div class="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+    <div class="flex items-center gap-2 font-extrabold text-white"><span class="grid h-7 w-7 place-items-center rounded-md bg-amber-500 text-navy-950"><i data-lucide="link-2" class="h-3.5 w-3.5"></i></span>Mend</div>
+    <p>Prototype with mock data — no real tenders, suppliers or transactions. © <span id="year"></span> Mend.</p>
+    <a href="#top" class="inline-flex items-center gap-1 hover:text-amber-400">Back to top <i data-lucide="arrow-up" class="h-4 w-4"></i></a>
+  </div>
+</footer>
+
+<!-- =================== OVERLAYS (drawer, modal, toasts) =================== -->
+<!-- Gap detail drawer: hotspot map context, who's buying, who's certified, financing fit -->
+<div id="drawer-root" class="fixed inset-0 z-50 hidden">
+  <div data-action="close-drawer" class="absolute inset-0 bg-navy-950/60 backdrop-blur-sm"></div>
+  <aside id="drawer-panel" role="dialog" aria-modal="true" aria-label="Gap detail" class="drawer thin-scroll absolute right-0 top-0 h-full w-full max-w-xl translate-x-full overflow-y-auto bg-white shadow-2xl dark:bg-navy-900"></aside>
+</div>
+<!-- Generic modal used by the bid, contact and post-demand forms -->
+<div id="modal-root" class="fixed inset-0 z-[55] hidden items-end justify-center sm:items-center sm:p-4">
+  <div data-action="close-modal" class="absolute inset-0 bg-navy-950/70 backdrop-blur-sm"></div>
+  <div id="modal-panel" role="dialog" aria-modal="true" class="modal-in card thin-scroll relative max-h-[92vh] w-full overflow-y-auto rounded-b-none sm:max-w-lg sm:rounded-2xl"></div>
+</div>
+<div id="toast-root" class="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2" aria-live="polite"></div>
+
+<script>
+'use strict';
+/* =====================================================================
+   MOCK DATA
+   Shapes follow the suggested data model: categories, manufacturers
+   (+ certifications inline), demands, bids, transactions, symbiosis hits.
+   Budgets/values are USD. Everything here is illustrative.
+   ===================================================================== */
+
+/** Product categories (categories table). `unit` is the default demand unit. */
+const CATEGORIES = [
+  { id: 'transformers', name: 'Power Transformers', icon: 'zap', unit: 'units' },
+  { id: 'battery', name: 'Battery Materials', icon: 'battery-charging', unit: 't' },
+  { id: 'solar', name: 'Solar Racking', icon: 'sun', unit: 'kits' },
+  { id: 'nutrition', name: 'Processed Nutrition (RUTF)', icon: 'wheat', unit: 't' },
+  { id: 'steel', name: 'Structural Steel', icon: 'hammer', unit: 't' },
+];
+
+/** Regions used by the region filter; centroids pin user-posted demands on the map. */
+const REGIONS = [
+  { id: 'West Africa', lat: 9.5, lng: 2.5 },
+  { id: 'East Africa', lat: 3.0, lng: 37.5 },
+  { id: 'Europe & Türkiye', lat: 48.0, lng: 15.0 },
+  { id: 'North America', lat: 38.0, lng: -95.0 },
+  { id: 'South Asia', lat: 21.0, lng: 78.0 },
+];
+
+/** Gap severity scale — red = acute, amber = tight, green = healthy. */
+const SEVERITY = {
+  acute:   { label: 'Acute gap', color: '#ef4444', rank: 0, badge: 'bg-red-500/10 text-red-600 ring-1 ring-red-500/25 dark:text-red-400' },
+  tight:   { label: 'Tight',     color: '#f59e0b', rank: 1, badge: 'bg-amber-500/10 text-amber-700 ring-1 ring-amber-500/25 dark:text-amber-400' },
+  healthy: { label: 'Healthy',   color: '#22c55e', rank: 2, badge: 'bg-green-500/10 text-green-700 ring-1 ring-green-500/25 dark:text-green-400' },
+};
+
+/** 10 manufacturers across Nigeria, Ghana, India, Türkiye and the EU. */
+const MANUFACTURERS = [
+  { id: 'm1', name: 'Lekki Power Equipment Ltd', city: 'Lagos', country: 'Nigeria', region: 'West Africa', lat: 6.44, lng: 3.47,
+    categories: ['transformers'], certs: ['IEC 60076', 'ISO 9001', 'SON MANCAP'], capacity: 120, capacityUnit: 'units',
+    leadTimeDays: 75, priceIndex: 0.92, verified: true, exportReady: true, refs: 14,
+    blurb: 'Distribution transformers 50 kVA–2.5 MVA, copper-wound, assembled in Lagos with local tank fabrication.' },
+  { id: 'm2', name: 'Kano Steelworks & Fabrication', city: 'Kano', country: 'Nigeria', region: 'West Africa', lat: 12.0, lng: 8.52,
+    categories: ['steel', 'solar'], certs: ['ISO 9001', 'SON MANCAP', 'EN 1090'], capacity: 800, capacityUnit: 't',
+    leadTimeDays: 21, priceIndex: 0.88, verified: true, exportReady: false, refs: 22,
+    blurb: 'Hot-dip galvanised sections and ground-mount solar racking. Spare slots for Q1 2027.' },
+  { id: 'm3', name: 'Accra Agro-Nutrition Co.', city: 'Accra', country: 'Ghana', region: 'West Africa', lat: 5.6, lng: -0.19,
+    categories: ['nutrition'], certs: ['ISO 22000', 'HACCP', 'FDA Ghana', 'NAFDAC'], capacity: 300, capacityUnit: 't',
+    leadTimeDays: 30, priceIndex: 0.95, verified: true, exportReady: true, refs: 9,
+    blurb: 'Peanut-based RUTF and fortified blended foods to UNICEF specification.' },
+  { id: 'm4', name: 'Tema Solar Structures', city: 'Tema', country: 'Ghana', region: 'West Africa', lat: 5.67, lng: -0.02,
+    categories: ['solar', 'steel'], certs: ['ISO 9001', 'EN 1090'], capacity: 6000, capacityUnit: 'kits',
+    leadTimeDays: 28, priceIndex: 0.9, verified: false, exportReady: false, refs: 4,
+    blurb: 'Roll-formed racking kits for C&I and utility solar. Verification visit scheduled.' },
+  { id: 'm5', name: 'Pune Transformer Works', city: 'Pune', country: 'India', region: 'South Asia', lat: 18.52, lng: 73.86,
+    categories: ['transformers'], certs: ['IEC 60076', 'BIS', 'ISO 9001'], capacity: 400, capacityUnit: 'units',
+    leadTimeDays: 90, priceIndex: 0.85, verified: true, exportReady: true, refs: 31,
+    blurb: 'High-volume 11/33 kV distribution units with amorphous-core options.' },
+  { id: 'm6', name: 'Gujarat CellTech Pvt', city: 'Ahmedabad', country: 'India', region: 'South Asia', lat: 23.02, lng: 72.57,
+    categories: ['battery'], certs: ['ISO 9001', 'IATF 16949', 'UN 38.3'], capacity: 2000, capacityUnit: 't',
+    leadTimeDays: 40, priceIndex: 0.91, verified: true, exportReady: true, refs: 17,
+    blurb: 'Cathode precursor and LFP cell materials; buys and refines black mass.' },
+  { id: 'm7', name: 'Anatolia Grid Systems', city: 'Ankara', country: 'Türkiye', region: 'Europe & Türkiye', lat: 39.93, lng: 32.86,
+    categories: ['transformers'], certs: ['IEC 60076', 'ISO 14001', 'CE'], capacity: 250, capacityUnit: 'units',
+    leadTimeDays: 60, priceIndex: 1.0, verified: true, exportReady: true, refs: 26,
+    blurb: 'Power transformers to 160 MVA with OLTC; strong MENA and Africa delivery record.' },
+  { id: 'm8', name: 'Bursa Steel Profiles', city: 'Bursa', country: 'Türkiye', region: 'Europe & Türkiye', lat: 40.19, lng: 29.06,
+    categories: ['steel', 'solar'], certs: ['EN 1090', 'ISO 9001', 'CE'], capacity: 1500, capacityUnit: 't',
+    leadTimeDays: 35, priceIndex: 0.97, verified: true, exportReady: true, refs: 19,
+    blurb: 'Cold-formed and hot-rolled profiles; Zn-Al-Mg coated tracker components.' },
+  { id: 'm9', name: 'Rhein Circular Metals GmbH', city: 'Duisburg', country: 'Germany', region: 'Europe & Türkiye', lat: 51.43, lng: 6.76,
+    categories: ['battery'], certs: ['ISO 14001', 'ISO 45001', 'EU Battery Reg.'], capacity: 600, capacityUnit: 't',
+    leadTimeDays: 45, priceIndex: 1.18, verified: true, exportReady: true, refs: 12,
+    blurb: 'Hydrometallurgical recovery of Li, Co and Ni with EU battery-passport traceability.' },
+  { id: 'm10', name: 'Ikeja Battery Recyclers', city: 'Lagos', country: 'Nigeria', region: 'West Africa', lat: 6.6, lng: 3.35,
+    categories: ['battery'], certs: ['ISO 14001', 'NESREA Permit'], capacity: 200, capacityUnit: 't',
+    leadTimeDays: 14, priceIndex: 0.8, verified: false, exportReady: false, refs: 3,
+    blurb: 'Collects and shreds Li-ion packs into black mass; lithium-rich feedstock awaiting export buyers.' },
+];
+
+/** 12 open demands (demands table). `bids` = competing bids already received. */
+const DEMANDS = [
+  { id: 'd1', title: '500 × 11/33kV distribution transformers', buyer: 'Eko DISCO', buyerType: 'Utility', buyerVerified: true,
+    category: 'transformers', qty: 500, unit: 'units', spec: 'IEC 60076 · 500 kVA · ONAN · copper windings',
+    city: 'Lagos', country: 'Nigeria', region: 'West Africa', lat: 6.45, lng: 3.39,
+    deadline: '2027-01-20', budget: 9500000, severity: 'acute', source: 'Public tender', bids: 3 },
+  { id: 'd2', title: '200 t lithium cobalt cathode scrap', buyer: 'Baltic Cell Manufacturing', buyerType: 'Manufacturer', buyerVerified: true,
+    category: 'battery', qty: 200, unit: 't', spec: 'LCO cathode scrap · ≥ 55% Co+Li content · assay certificate',
+    city: 'Gdańsk', country: 'Poland', region: 'Europe & Türkiye', lat: 54.35, lng: 18.65,
+    deadline: '2026-12-18', budget: 4200000, severity: 'tight', source: 'Procurement notice', bids: 5 },
+  { id: 'd3', title: '5,000 solar mounting kits', buyer: 'Sahel EPC Ltd', buyerType: 'EPC', buyerVerified: true,
+    category: 'solar', qty: 5000, unit: 'kits', spec: 'Ground-mount · hot-dip galvanised · 2P portrait for 550 W modules',
+    city: 'Abuja', country: 'Nigeria', region: 'West Africa', lat: 9.06, lng: 7.49,
+    deadline: '2027-02-10', budget: 2750000, severity: 'acute', source: 'Infrastructure plan', bids: 2 },
+  { id: 'd4', title: '120 × 33/0.415kV substation transformers', buyer: 'Volta Grid Utility', buyerType: 'Utility', buyerVerified: true,
+    category: 'transformers', qty: 120, unit: 'units', spec: 'IEC 60076 · 1 MVA · Dyn11 · ONAN',
+    city: 'Accra', country: 'Ghana', region: 'West Africa', lat: 5.56, lng: -0.21,
+    deadline: '2027-03-05', budget: 3960000, severity: 'tight', source: 'Public tender', bids: 4 },
+  { id: 'd5', title: '1,200 t ready-to-use therapeutic food', buyer: 'Relief Nutrition Alliance', buyerType: 'NGO', buyerVerified: true,
+    category: 'nutrition', qty: 1200, unit: 't', spec: 'RUTF to UNICEF spec · 92 g sachets · Codex compliant',
+    city: 'Maiduguri', country: 'Nigeria', region: 'West Africa', lat: 11.85, lng: 13.16,
+    deadline: '2026-12-05', budget: 3600000, severity: 'acute', source: 'NGO supply call', bids: 1 },
+  { id: 'd6', title: '40 × 132/33kV 60 MVA power transformers', buyer: 'Lone Star Power Cooperative', buyerType: 'Utility', buyerVerified: true,
+    category: 'transformers', qty: 40, unit: 'units', spec: 'IEEE C57.12 · 60 MVA · on-load tap changer',
+    city: 'Houston', country: 'United States', region: 'North America', lat: 29.76, lng: -95.37,
+    deadline: '2027-06-30', budget: 64000000, severity: 'acute', source: 'Infrastructure plan', bids: 6 },
+  { id: 'd7', title: '2,500 t galvanised structural steel', buyer: 'Konza Infrastructure JV', buyerType: 'EPC', buyerVerified: false,
+    category: 'steel', qty: 2500, unit: 't', spec: 'S355 C-channels & I-beams · HDG to ISO 1461',
+    city: 'Nairobi', country: 'Kenya', region: 'East Africa', lat: -1.29, lng: 36.82,
+    deadline: '2027-01-31', budget: 3100000, severity: 'tight', source: 'Procurement notice', bids: 3 },
+  { id: 'd8', title: '400 × 11kV pole-mounted transformers', buyer: 'Maharashtra DISCOM', buyerType: 'Utility', buyerVerified: true,
+    category: 'transformers', qty: 400, unit: 'units', spec: 'IS 1180 · 100 kVA · amorphous core',
+    city: 'Mumbai', country: 'India', region: 'South Asia', lat: 19.07, lng: 72.88,
+    deadline: '2027-02-28', budget: 3200000, severity: 'healthy', source: 'Public tender', bids: 9 },
+  { id: 'd9', title: '10,000 t battery-grade NMC black mass', buyer: 'Carolina Cell Works', buyerType: 'Manufacturer', buyerVerified: true,
+    category: 'battery', qty: 10000, unit: 't', spec: 'NMC 622 black mass · ≤ 2% Al/Cu · traceable origin',
+    city: 'Charlotte', country: 'United States', region: 'North America', lat: 35.23, lng: -80.84,
+    deadline: '2027-04-15', budget: 38000000, severity: 'acute', source: 'Procurement notice', bids: 2 },
+  { id: 'd10', title: '800 t RUTF for drought response', buyer: 'Horn Relief Consortium', buyerType: 'NGO', buyerVerified: false,
+    category: 'nutrition', qty: 800, unit: 't', spec: 'Peanut-based RUTF · 24-month shelf life',
+    city: 'Addis Ababa', country: 'Ethiopia', region: 'East Africa', lat: 9.03, lng: 38.74,
+    deadline: '2027-01-10', budget: 2400000, severity: 'tight', source: 'NGO supply call', bids: 2 },
+  { id: 'd11', title: '12,000 ground-mount racking kits', buyer: 'Rajasthan Solar Park SPV', buyerType: 'EPC', buyerVerified: true,
+    category: 'solar', qty: 12000, unit: 'kits', spec: 'Single-axis tracker compatible · Zn-Al-Mg coated',
+    city: 'Jodhpur', country: 'India', region: 'South Asia', lat: 26.24, lng: 73.02,
+    deadline: '2027-03-20', budget: 9600000, severity: 'healthy', source: 'Infrastructure plan', bids: 11 },
+  { id: 'd12', title: '1,800 t rebar & steel sections', buyer: 'Port of Dakar Expansion', buyerType: 'Government', buyerVerified: true,
+    category: 'steel', qty: 1800, unit: 't', spec: 'B500B rebar + HEA sections · mill test certificates',
+    city: 'Dakar', country: 'Senegal', region: 'West Africa', lat: 14.72, lng: -17.47,
+    deadline: '2027-02-15', budget: 1450000, severity: 'healthy', source: 'Public tender', bids: 7 },
+];
+
+/** Waste-to-value pairs (symbiosis_hits). `fit` = match score %. */
+const SYMBIOSIS = [
+  { id: 's1', from: { name: 'Ikeja Battery Recyclers', city: 'Lagos', country: 'Nigeria' }, to: { name: 'Rhein Circular Metals GmbH', city: 'Duisburg', country: 'Germany' },
+    material: 'Li-ion black mass (NMC/LCO)', qty: 60, unit: 't', valuePerMonth: 228000, fit: 94, impact: 'Buyer saves ~18% vs Asia-shipped feedstock' },
+  { id: 's2', from: { name: 'Kano Steelworks & Fabrication', city: 'Kano', country: 'Nigeria' }, to: { name: 'Onitsha Roofing Sheets Ltd', city: 'Onitsha', country: 'Nigeria' },
+    material: 'Galvanised steel offcuts ≥ 2 m', qty: 40, unit: 't', valuePerMonth: 26000, fit: 89, impact: 'Offcuts become roofing purlins — zero landfill' },
+  { id: 's3', from: { name: 'Anatolia Grid Systems', city: 'Ankara', country: 'Türkiye' }, to: { name: 'Rhein Circular Metals GmbH', city: 'Duisburg', country: 'Germany' },
+    material: 'Copper winding scrap', qty: 8, unit: 't', valuePerMonth: 68000, fit: 86, impact: 'Closed-loop copper with EU traceability' },
+  { id: 's4', from: { name: 'Accra Agro-Nutrition Co.', city: 'Accra', country: 'Ghana' }, to: { name: 'Kumasi BioPellet Ltd', city: 'Kumasi', country: 'Ghana' },
+    material: 'Peanut skins & husks', qty: 25, unit: 't', valuePerMonth: 3500, fit: 81, impact: 'Biomass fuel; avoids open-field burning' },
+  { id: 's5', from: { name: 'Pune Transformer Works', city: 'Pune', country: 'India' }, to: { name: 'Nashik Motor Laminations', city: 'Nashik', country: 'India' },
+    material: 'CRGO electrical-steel trimmings', qty: 15, unit: 't', valuePerMonth: 18000, fit: 78, impact: 'Trimmings re-slit into small-motor cores' },
+  { id: 's6', from: { name: 'Lekki Power Equipment Ltd', city: 'Lagos', country: 'Nigeria' }, to: { name: 'Lagos Oil Regeneration Co.', city: 'Lagos', country: 'Nigeria' },
+    material: 'Used transformer oil (regenerable)', qty: 12, unit: 'kL', valuePerMonth: 9000, fit: 74, impact: 'Regenerated oil re-enters the grid supply chain' },
+];
+
+/** Financing programs. `regions` includes 'Global' for worldwide fit; `categories` includes 'all' for any product. */
+const FINANCING = [
+  { id: 'f1', name: 'AfDB Trade Finance Program', type: 'Trade credit & risk participation', icon: 'landmark', ticket: 'US$1M–25M',
+    regions: ['West Africa', 'East Africa'], categories: ['all'], desc: 'Credit lines and risk-sharing through partner banks for African importers and exporters.' },
+  { id: 'f2', name: 'World Bank / IFC trade guarantees', type: 'Letter-of-credit guarantees', icon: 'shield-check', ticket: 'US$500k–50M',
+    regions: ['Global'], categories: ['all'], desc: 'Covers issuing-bank payment risk so suppliers ship against LCs from emerging-market buyers.' },
+  { id: 'f3', name: 'DFI supply-chain trade credit', type: 'Pre-shipment working capital', icon: 'wallet', ticket: 'US$250k–10M',
+    regions: ['West Africa', 'East Africa', 'South Asia'], categories: ['transformers', 'solar', 'steel', 'nutrition'], desc: 'Working capital advanced against a confirmed Mend purchase order — producers buy inputs before delivery.' },
+  { id: 'f4', name: 'Export incentive schemes (e.g. NEXIM, EEG)', type: 'Export loans & grants', icon: 'ship', ticket: 'Up to 15% of FOB',
+    regions: ['West Africa'], categories: ['all'], desc: 'Concessional export finance and post-shipment grants for qualifying West African producers.' },
+  { id: 'f5', name: 'Carbon-credit pre-financing', type: 'Forward carbon offtake', icon: 'leaf', ticket: 'US$100k–5M',
+    regions: ['Global'], categories: ['battery', 'solar'], desc: 'Advance against verified emission reductions from recycling and renewable-energy supply.' },
+  { id: 'f6', name: 'Government localisation subsidies', type: 'Capex & local-content support', icon: 'factory', ticket: 'Varies by scheme',
+    regions: ['West Africa', 'South Asia', 'North America'], categories: ['all'], desc: 'Local-manufacturing funds and production-linked incentives that reward in-country value add.' },
+];
+
+/** Matched deals (transactions) feeding the commission ledger. */
+const TRANSACTIONS = [
+  { id: 'TX-1042', deal: '60 t RUTF → Relief Nutrition Alliance', supplier: 'Accra Agro-Nutrition Co.', value: 180000, rate: 0.02, status: 'Settled', date: '2026-09-14' },
+  { id: 'TX-1057', deal: '1,000 racking kits → Sahel EPC Ltd', supplier: 'Kano Steelworks & Fabrication', value: 520000, rate: 0.02, status: 'In escrow', date: '2026-10-02' },
+  { id: 'TX-1063', deal: '30 × 33kV transformers → Volta Grid Utility', supplier: 'Pune Transformer Works', value: 690000, rate: 0.015, status: 'Delivered', date: '2026-10-21' },
+];
+
+/** Revenue streams shown in the "How Mend earns" strip. */
+const REVENUE = [
+  { name: 'Transaction fee', who: 'Both sides', format: '1–3% of matched deal value', icon: 'handshake' },
+  { name: 'Featured supplier listing', who: 'Manufacturers', format: '₦50k–₦500k monthly retainer', icon: 'star' },
+  { name: 'Tender access', who: 'Buyers', format: 'Freemium — first 3 bids/month free', icon: 'gavel' },
+  { name: 'Market intelligence', who: 'Banks, DFIs, consultancies', format: '$2k–$20k annual subscription', icon: 'line-chart' },
+  { name: 'Verification fee', who: 'Manufacturers', format: 'One-time per certification check', icon: 'badge-check' },
+];
+
+/** First-visit activity log, timestamps relative to load (minutes ago). */
+const SEED_ACTIVITY = [
+  { mins: 12, icon: 'badge-check', text: 'Verified badge granted to Bursa Steel Profiles (EN 1090 audit passed)' },
+  { mins: 47, icon: 'radar', text: 'Gap Radar: Power Transformers in West Africa escalated to acute' },
+  { mins: 95, icon: 'package-check', text: 'TX-1063 marked Delivered — 30 × 33kV transformers to Volta Grid Utility' },
+  { mins: 180, icon: 'file-plus', text: 'New demand published: 5,000 solar mounting kits (Abuja)' },
+  { mins: 320, icon: 'recycle', text: 'Symbiosis match found: Ikeja black mass → Rhein Circular Metals' },
+  { mins: 1440, icon: 'lock', text: 'TX-1057 funds placed in escrow — 1,000 racking kits' },
+];
+
+/* =====================================================================
+   PERSISTENCE — localStorage wrapped in try/catch so the prototype still
+   works (in memory) when storage is blocked, full, or in private mode.
+   ===================================================================== */
+const store = {
+  get(key, fallback) {
+    try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }
+    catch (e) { return fallback; }
+  },
+  set(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* in-memory only */ }
+  },
+};
+const KEYS = { bids: 'mend.bids', demands: 'mend.demands', activity: 'mend.activity', watch: 'mend.watch', symbiosis: 'mend.symbiosis', theme: 'mend.theme' };
+const FREE_BIDS_PER_MONTH = 3;
+const PIPELINE_RATE = 0.02;
+
+/* =====================================================================
+   APP STATE — single source of truth; every render reads from here.
+   ===================================================================== */
+const state = {
+  filters: { q: '', category: 'all', region: 'all', verified: false },
+  dir: { cert: 'all', country: 'all', maxLead: 120, sort: 'verified' },
+  tenderSort: 'severity',
+  showFactories: true,
+  bids: store.get(KEYS.bids, []),
+  customDemands: store.get(KEYS.demands, []),
+  watch: store.get(KEYS.watch, ['transformers', 'solar']),
+  proposed: store.get(KEYS.symbiosis, []),
+  activity: store.get(KEYS.activity, null) || SEED_ACTIVITY.map(a => ({ ts: Date.now() - a.mins * 60000, icon: a.icon, text: a.text })),
+};
+
+/* =====================================================================
+   HELPERS
+   ===================================================================== */
+const $ = (sel, root = document) => root.querySelector(sel);
+
+/** Escape anything user-typed (or data-derived) before it goes into innerHTML. */
+function esc(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
+const usdCompact = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 });
+const usdFull = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+const fmtUSD = n => usdCompact.format(n);
+const fmtUSDFull = n => usdFull.format(n);
+const fmtNum = n => new Intl.NumberFormat('en-US').format(n);
+const fmtDate = iso => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+const avg = arr => (arr.length ? arr.reduce((s, n) => s + n, 0) / arr.length : 0);
+
+function daysUntil(iso) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return Math.ceil((new Date(iso + 'T00:00:00') - today) / 86400000);
+}
+function deadlineLabel(iso) {
+  const d = daysUntil(iso);
+  return d < 0 ? 'Closed' : d === 0 ? 'Today' : `${d} days`;
+}
+function timeAgo(ts) {
+  const s = Math.max(1, Math.round((Date.now() - ts) / 1000));
+  if (s < 60) return 'just now';
+  const m = Math.round(s / 60); if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60); if (h < 24) return `${h} h ago`;
+  return `${Math.round(h / 24)} d ago`;
+}
+const initials = name => name.split(/\s+/).filter(w => /^[A-Za-z]/.test(w)).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+const catById = id => CATEGORIES.find(c => c.id === id) || CATEGORIES[0];
+const allDemands = () => [...state.customDemands, ...DEMANDS];
+const demandById = id => allDemands().find(d => d.id === id);
+const activeBidFor = id => state.bids.find(b => b.demandId === id && b.status === 'pending');
+const bySeverity = (a, b) => SEVERITY[a.severity].rank - SEVERITY[b.severity].rank || b.budget - a.budget;
+
+/** Re-hydrate <i data-lucide> placeholders into SVGs after any innerHTML render. */
+function refreshIcons() { if (window.lucide) window.lucide.createIcons(); }
+
+function logActivity(icon, text) {
+  state.activity.unshift({ ts: Date.now(), icon, text });
+  state.activity = state.activity.slice(0, 40);
+  store.set(KEYS.activity, state.activity);
+}
+
+function toast(message, tone = 'success') {
+  const icon = tone === 'success' ? 'check-circle-2' : tone === 'error' ? 'alert-circle' : 'info';
+  const color = tone === 'success' ? 'text-emerald-500' : tone === 'error' ? 'text-red-500' : 'text-amber-500';
+  const el = document.createElement('div');
+  el.className = 'toast-in pointer-events-auto flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-xl dark:border-white/10 dark:bg-navy-900';
+  el.innerHTML = `<i data-lucide="${icon}" class="mt-0.5 h-4 w-4 shrink-0 ${color}"></i><span>${esc(message)}</span>`;
+  $('#toast-root').appendChild(el);
+  refreshIcons();
+  setTimeout(() => { el.style.transition = 'opacity .3s'; el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 3200);
+}
+
+/* =====================================================================
+   FILTERING — global bar (search, category, region, verified-only)
+   plus directory-only controls (certification, country, lead time).
+   ===================================================================== */
+function filteredDemands() {
+  const { q, category, region, verified } = state.filters;
+  const needle = q.trim().toLowerCase();
+  return allDemands().filter(d =>
+    (category === 'all' || d.category === category) &&
+    (region === 'all' || d.region === region) &&
+    (!verified || d.buyerVerified) &&
+    (!needle || [d.title, d.buyer, d.buyerType, d.city, d.country, d.region, d.spec, catById(d.category).name].join(' ').toLowerCase().includes(needle)));
+}
+
+/** Suppliers matching the global filters; `withDirectory` also applies the directory controls. */
+function filteredManufacturers(withDirectory = true) {
+  const { q, category, region, verified } = state.filters;
+  const { cert, country, maxLead, sort } = state.dir;
+  const needle = q.trim().toLowerCase();
+  let list = MANUFACTURERS.filter(m =>
+    (category === 'all' || m.categories.includes(category)) &&
+    (region === 'all' || m.region === region) &&
+    (!verified || m.verified) &&
+    (!needle || [m.name, m.city, m.country, m.region, m.blurb, ...m.certs, ...m.categories.map(c => catById(c).name)].join(' ').toLowerCase().includes(needle)));
+  if (!withDirectory) return list;
+  list = list.filter(m => (cert === 'all' || m.certs.includes(cert)) && (country === 'all' || m.country === country) && m.leadTimeDays <= maxLead);
+  const sorters = {
+    verified: (a, b) => (b.verified - a.verified) || a.leadTimeDays - b.leadTimeDays,
+    lead: (a, b) => a.leadTimeDays - b.leadTimeDays,
+    price: (a, b) => a.priceIndex - b.priceIndex,
+    capacity: (a, b) => b.capacity - a.capacity,
+  };
+  return list.sort(sorters[sort]);
+}
+
+/* =====================================================================
+   01 · GAP RADAR — Leaflet map. Circle size ∝ √budget, colour = severity,
+   acute gaps pulse. Diamonds show where certified factories exist.
+   ===================================================================== */
+let map = null, tileLayer = null, demandLayer = null, factoryLayer = null;
+const markers = new Map();
+const TILES = {
+  light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+  dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+};
+
+function initMap() {
+  if (!window.L) {
+    $('#radar-map').innerHTML = '<div class="grid h-full place-items-center p-6 text-center text-sm text-slate-500">Map library failed to load — check your connection. The hotspot list and tender board still work.</div>';
+    return;
+  }
+  map = L.map('radar-map', { worldCopyJump: true, minZoom: 2, scrollWheelZoom: false, zoomControl: true }).setView([18, 15], 2);
+  // Scroll-zoom only after the user clicks into the map, so page scrolling never gets hijacked.
+  map.on('click', () => map.scrollWheelZoom.enable());
+  map.on('mouseout', () => map.scrollWheelZoom.disable());
+  map.on('popupopen', refreshIcons);
+  demandLayer = L.layerGroup().addTo(map);
+  factoryLayer = L.layerGroup().addTo(map);
+  setTiles();
+}
+
+function setTiles() {
+  if (!map) return;
+  const dark = document.documentElement.classList.contains('dark');
+  if (tileLayer) tileLayer.remove();
+  tileLayer = L.tileLayer(dark ? TILES.dark : TILES.light, {
+    subdomains: 'abcd', maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  }).addTo(map);
+}
+
+function demandPopup(d) {
+  const s = SEVERITY[d.severity];
+  return `<div class="w-60 text-[13px] leading-snug">
+    <div class="text-[11px] font-semibold uppercase tracking-wide" style="color:${s.color}">● ${s.label} · ${esc(catById(d.category).name)}</div>
+    <div class="mt-1 text-sm font-semibold">${esc(d.title)}</div>
+    <div class="mt-0.5 text-slate-500 dark:text-slate-400">${esc(d.buyer)} · ${esc(d.city)}, ${esc(d.country)}</div>
+    <div class="mt-3 grid grid-cols-3 gap-2">
+      <div><div class="text-[10px] uppercase text-slate-400">Budget</div><div class="font-semibold">${fmtUSD(d.budget)}</div></div>
+      <div><div class="text-[10px] uppercase text-slate-400">Closes</div><div class="font-semibold">${deadlineLabel(d.deadline)}</div></div>
+      <div><div class="text-[10px] uppercase text-slate-400">Bids</div><div class="font-semibold">${d.bids + (activeBidFor(d.id) ? 1 : 0)}</div></div>
+    </div>
+    <div class="mt-3 flex gap-2">
+      <button data-action="detail" data-id="${d.id}" class="btn-ghost !px-3 !py-1.5 !text-xs">Gap detail</button>
+      ${d.mine ? '' : `<button data-action="bid" data-id="${d.id}" class="btn-primary !px-3 !py-1.5 !text-xs">Place bid</button>`}
+    </div>
+  </div>`;
+}
+
+function factoryPopup(m) {
+  return `<div class="w-56 text-[13px] leading-snug">
+    <div class="text-[11px] font-semibold uppercase tracking-wide ${m.verified ? 'text-blue-500' : 'text-slate-400'}">◆ ${m.verified ? 'Verified factory' : 'Pending verification'}</div>
+    <div class="mt-1 text-sm font-semibold">${esc(m.name)}</div>
+    <div class="mt-0.5 text-slate-500 dark:text-slate-400">${esc(m.city)}, ${esc(m.country)}</div>
+    <div class="mt-2 text-xs">${fmtNum(m.capacity)} ${esc(m.capacityUnit)}/mo · ${m.leadTimeDays}-day lead time</div>
+    <button data-action="contact" data-id="${m.id}" class="btn-primary mt-3 !px-3 !py-1.5 !text-xs">Contact</button>
+  </div>`;
+}
+
+function renderMap(list) {
+  $('#map-empty').classList.toggle('hidden', list.length > 0);
+  $('#map-empty').classList.toggle('grid', list.length === 0);
+  if (!map) return;
+  demandLayer.clearLayers(); factoryLayer.clearLayers(); markers.clear();
+  list.forEach(d => {
+    const s = SEVERITY[d.severity];
+    const marker = L.circleMarker([d.lat, d.lng], {
+      radius: Math.min(30, 7 + Math.sqrt(d.budget / 1e6) * 3.2),
+      color: s.color, weight: 2, fillColor: s.color, fillOpacity: 0.35,
+      className: d.severity === 'acute' ? 'gap-acute' : '',
+    }).bindPopup(demandPopup(d), { maxWidth: 280 });
+    marker.bindTooltip(esc(d.title), { direction: 'top', offset: [0, -6] });
+    marker.addTo(demandLayer);
+    markers.set(d.id, marker);
+  });
+  if (state.showFactories) {
+    filteredManufacturers(false).forEach(m => {
+      const icon = L.divIcon({ className: '', html: `<div class="factory-pin ${m.verified ? '' : 'unverified'}"></div>`, iconSize: [12, 12], iconAnchor: [6, 6] });
+      L.marker([m.lat, m.lng], { icon, keyboard: false, zIndexOffset: -100 }).bindPopup(factoryPopup(m)).bindTooltip(esc(m.name), { direction: 'top' }).addTo(factoryLayer);
+    });
+  }
+}
+
+/** Zoom to what the filters left on the map (called only when filters change). */
+function fitMap(list) {
+  if (!map || !list.length) return;
+  if (list.length === allDemands().length) { map.flyTo([18, 15], 2, { duration: 0.6 }); return; }
+  map.flyToBounds(L.latLngBounds(list.map(d => [d.lat, d.lng])), { padding: [60, 60], maxZoom: 5, duration: 0.6 });
+}
+
+function flyToDemand(id) {
+  const marker = markers.get(id);
+  if (!map || !marker) { openDetail(id); return; }
+  document.getElementById('radar').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  let opened = false;
+  const open = () => { if (!opened) { opened = true; marker.openPopup(); } };
+  map.once('moveend', open);
+  setTimeout(open, 1200); // fallback when the fly animation is skipped (background tab, reduced motion)
+  map.flyTo(marker.getLatLng(), 5, { duration: 0.8 });
+}
+
+function renderHotspots(list) {
+  const sorted = [...list].sort(bySeverity);
+  $('#hotspot-count').textContent = `${sorted.length} signal${sorted.length === 1 ? '' : 's'}`;
+  $('#hotspot-list').innerHTML = sorted.length ? sorted.map(d => {
+    const s = SEVERITY[d.severity];
+    return `<li><button data-action="fly" data-id="${d.id}" class="flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-white/5">
+      <span class="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full" style="background:${s.color}"></span>
+      <span class="min-w-0 flex-1">
+        <span class="block truncate text-sm font-medium text-slate-900 dark:text-white">${esc(d.title)}</span>
+        <span class="block truncate text-xs text-slate-500 dark:text-slate-400">${esc(d.buyer)} · ${esc(d.city)}</span>
+      </span>
+      <span class="shrink-0 text-right"><span class="block text-sm font-semibold">${fmtUSD(d.budget)}</span><span class="block text-[11px] text-slate-500 dark:text-slate-400">${deadlineLabel(d.deadline)}</span></span>
+    </button></li>`;
+  }).join('') : '<li class="px-4 py-10 text-center text-sm text-slate-500">No hotspots for these filters.</li>';
+}
+
+/* ============================ HERO ============================ */
+function renderHero() {
+  const demands = allDemands();
+  const countries = new Set([...demands.map(d => d.country), ...MANUFACTURERS.map(m => m.country)]);
+  const stats = [
+    ['Open demand value', fmtUSD(demands.reduce((s, d) => s + d.budget, 0))],
+    ['Acute supply gaps', demands.filter(d => d.severity === 'acute').length],
+    ['Verified manufacturers', MANUFACTURERS.filter(m => m.verified).length],
+    ['Countries covered', countries.size],
+  ];
+  $('#hero-stats').innerHTML = stats.map(([k, v]) => `<div class="bg-navy-950/90 p-5"><dt class="text-xs text-slate-400">${k}</dt><dd class="mt-1 text-2xl font-bold text-white sm:text-3xl">${v}</dd></div>`).join('');
+  $('#hero-chips').innerHTML = CATEGORIES.map(c => {
+    const on = state.filters.category === c.id;
+    return `<button data-action="chip" data-id="${c.id}" class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition ${on ? 'border-amber-500 bg-amber-500 text-navy-950' : 'border-white/15 text-slate-300 hover:border-amber-500/60 hover:text-white'}"><i data-lucide="${c.icon}" class="h-3.5 w-3.5"></i>${esc(c.name)}</button>`;
+  }).join('');
+}
+
+/* =================== 02 · TENDER BOARD + MY BIDS =================== */
+function tenderCard(d) {
+  const c = catById(d.category), s = SEVERITY[d.severity];
+  const days = daysUntil(d.deadline), myBid = activeBidFor(d.id);
+  const action = d.mine
+    ? '<span class="badge bg-blue-500/10 text-blue-600 ring-1 ring-blue-500/20 dark:text-blue-400"><i data-lucide="user" class="h-3 w-3"></i>Your listing</span>'
+    : myBid
+      ? `<span class="badge bg-amber-500/15 text-amber-700 dark:text-amber-300"><i data-lucide="clock" class="h-3 w-3"></i>Your bid ${fmtUSD(myBid.price)} · pending</span>`
+      : `<button data-action="bid" data-id="${d.id}" class="btn-primary flex-1"><i data-lucide="gavel" class="h-4 w-4"></i>Place bid</button>`;
+  return `<article class="card flex flex-col p-5 transition hover:border-amber-500/50">
+    <div class="flex items-start justify-between gap-3">
+      <span class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400"><i data-lucide="${c.icon}" class="h-3.5 w-3.5"></i>${esc(c.name)}</span>
+      <span class="badge ${s.badge}">${s.label}</span>
+    </div>
+    <h3 class="mt-3 font-semibold leading-snug text-slate-900 dark:text-white"><button data-action="detail" data-id="${d.id}" class="text-left hover:text-amber-600 dark:hover:text-amber-400">${esc(d.title)}</button></h3>
+    <p class="mt-1 flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">${esc(d.buyer)}${d.buyerVerified ? '<i data-lucide="badge-check" class="h-4 w-4 text-amber-500"></i><span class="sr-only">Verified buyer</span>' : ''}</p>
+    <dl class="mt-4 grid grid-cols-3 gap-3 text-xs">
+      <div><dt class="text-slate-400">Budget</dt><dd class="mt-0.5 text-sm font-semibold text-slate-800 dark:text-slate-100">${fmtUSD(d.budget)}</dd></div>
+      <div><dt class="text-slate-400">Closes in</dt><dd class="mt-0.5 text-sm font-semibold ${days <= 45 ? 'text-red-600 dark:text-red-400' : 'text-slate-800 dark:text-slate-100'}">${deadlineLabel(d.deadline)}</dd></div>
+      <div><dt class="text-slate-400">Bids</dt><dd class="mt-0.5 text-sm font-semibold text-slate-800 dark:text-slate-100">${d.bids + (myBid ? 1 : 0)}</dd></div>
+    </dl>
+    <p class="mt-3 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400"><i data-lucide="map-pin" class="h-3.5 w-3.5 shrink-0"></i>${esc(d.city)}, ${esc(d.country)} · ${esc(d.source)}</p>
+    <div class="mt-auto flex items-center gap-2 pt-5">${action}
+      <button data-action="detail" data-id="${d.id}" class="btn-ghost ml-auto !px-3" aria-label="Gap detail for ${esc(d.title)}"><i data-lucide="arrow-up-right" class="h-4 w-4"></i></button>
+    </div>
+  </article>`;
+}
+
+function renderTenders(list) {
+  const sorters = {
+    severity: bySeverity,
+    deadline: (a, b) => new Date(a.deadline) - new Date(b.deadline),
+    budget: (a, b) => b.budget - a.budget,
+  };
+  const sorted = [...list].sort(sorters[state.tenderSort]);
+  $('#tender-grid').innerHTML = sorted.map(tenderCard).join('');
+  $('#tender-empty').classList.toggle('hidden', sorted.length > 0);
+}
+
+function bidsThisMonth() {
+  const now = new Date();
+  return state.bids.filter(b => { const t = new Date(b.submittedAt); return t.getMonth() === now.getMonth() && t.getFullYear() === now.getFullYear(); }).length;
+}
+
+function renderMyBids() {
+  const rows = [...state.bids].sort((a, b) => b.submittedAt - a.submittedAt);
+  const pending = rows.filter(b => b.status === 'pending').length;
+  const used = bidsThisMonth();
+  $('#mybids-count').textContent = `${pending} pending`;
+  $('#freemium-note').textContent = used < FREE_BIDS_PER_MONTH
+    ? `Saved in this browser · ${used} of ${FREE_BIDS_PER_MONTH} free bids used this month`
+    : `Saved in this browser · free tier used (${used} bids) — Pro unlocks unlimited bidding`;
+  $('#mybids-empty').classList.toggle('hidden', rows.length > 0);
+  $('#mybids-body').innerHTML = rows.map(b => {
+    const d = demandById(b.demandId);
+    const status = b.status === 'pending'
+      ? '<span class="badge bg-amber-500/15 text-amber-700 dark:text-amber-300"><i data-lucide="clock" class="h-3 w-3"></i>Pending</span>'
+      : '<span class="badge bg-slate-500/10 text-slate-500">Withdrawn</span>';
+    const act = b.status === 'pending'
+      ? `<button data-action="withdraw" data-id="${b.id}" class="text-xs font-medium text-slate-500 hover:text-red-600">Withdraw</button>`
+      : `<button data-action="remove-bid" data-id="${b.id}" class="text-xs font-medium text-slate-500 hover:text-red-600" aria-label="Remove bid"><i data-lucide="trash-2" class="h-4 w-4"></i></button>`;
+    return `<tr class="${b.status === 'pending' ? '' : 'opacity-60'}">
+      <td class="px-5 py-3"><button data-action="detail" data-id="${esc(b.demandId)}" class="text-left font-medium text-slate-900 hover:text-amber-600 dark:text-white dark:hover:text-amber-400">${esc(d ? d.title : 'Demand no longer listed')}</button>
+        <div class="text-xs text-slate-500 dark:text-slate-400">${esc(d ? d.buyer : '')}${b.note ? ` · “${esc(b.note.slice(0, 60))}${b.note.length > 60 ? '…' : ''}”` : ''}</div></td>
+      <td class="px-3 py-3 font-semibold">${fmtUSDFull(b.price)}</td>
+      <td class="px-3 py-3">${b.deliveryDays} days</td>
+      <td class="px-3 py-3 text-slate-500 dark:text-slate-400">${timeAgo(b.submittedAt)}</td>
+      <td class="px-3 py-3">${status}</td>
+      <td class="px-5 py-3 text-right">${act}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* ================ 03 · SUPPLIER DIRECTORY ================ */
+function supplierCard(m) {
+  const badge = m.verified
+    ? '<span class="badge bg-emerald-500/10 text-emerald-700 ring-1 ring-emerald-500/25 dark:text-emerald-400"><i data-lucide="badge-check" class="h-3.5 w-3.5"></i>Verified</span>'
+    : '<span class="badge bg-slate-500/10 text-slate-500 ring-1 ring-slate-500/20 dark:text-slate-400"><i data-lucide="hourglass" class="h-3.5 w-3.5"></i>Pending check</span>';
+  const pi = m.priceIndex;
+  return `<article class="card flex flex-col p-5">
+    <div class="flex items-start gap-3">
+      <div class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-navy-950 text-sm font-bold text-amber-400 dark:bg-white/5">${esc(initials(m.name))}</div>
+      <div class="min-w-0 flex-1">
+        <h3 class="truncate font-semibold text-slate-900 dark:text-white" title="${esc(m.name)}">${esc(m.name)}</h3>
+        <p class="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400"><i data-lucide="map-pin" class="h-3 w-3"></i>${esc(m.city)}, ${esc(m.country)}</p>
+      </div>
+      ${badge}
+    </div>
+    <p class="mt-3 text-sm text-slate-600 dark:text-slate-300">${esc(m.blurb)}</p>
+    <div class="mt-3 flex flex-wrap gap-1.5">${m.categories.map(id => { const c = catById(id); return `<span class="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300"><i data-lucide="${c.icon}" class="h-3 w-3"></i>${esc(c.name)}</span>`; }).join('')}</div>
+    <dl class="mt-4 grid grid-cols-3 gap-3 rounded-xl bg-slate-50 p-3 text-xs dark:bg-navy-950/60">
+      <div><dt class="text-slate-400">Capacity</dt><dd class="mt-0.5 font-semibold text-slate-800 dark:text-slate-100">${fmtNum(m.capacity)} ${esc(m.capacityUnit)}/mo</dd></div>
+      <div><dt class="text-slate-400">Lead time</dt><dd class="mt-0.5 font-semibold text-slate-800 dark:text-slate-100">${m.leadTimeDays} days</dd></div>
+      <div><dt class="text-slate-400">Price index</dt><dd class="mt-0.5 font-semibold ${pi < 1 ? 'text-emerald-600 dark:text-emerald-400' : pi > 1.05 ? 'text-red-600 dark:text-red-400' : 'text-slate-800 dark:text-slate-100'}">${pi.toFixed(2)}</dd></div>
+    </dl>
+    <div class="mt-4">
+      <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Certifications</p>
+      <div class="mt-1.5 flex flex-wrap gap-1.5">${m.certs.map(c => `<span class="rounded-md border border-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:border-white/10 dark:text-slate-300">${esc(c)}</span>`).join('')}</div>
+    </div>
+    <div class="mt-auto flex items-center gap-2 pt-5 text-xs text-slate-500 dark:text-slate-400">
+      <span class="inline-flex items-center gap-1"><i data-lucide="${m.exportReady ? 'ship' : 'home'}" class="h-3.5 w-3.5"></i>${m.exportReady ? 'Export-ready' : 'Domestic'}</span>
+      <span aria-hidden="true">·</span><span>${m.refs} contracts</span>
+      <button data-action="contact" data-id="${m.id}" class="btn-primary ml-auto !py-1.5"><i data-lucide="mail" class="h-4 w-4"></i>Contact</button>
+    </div>
+  </article>`;
+}
+
+function renderSuppliers() {
+  const list = filteredManufacturers(true);
+  $('#supplier-grid').innerHTML = list.map(supplierCard).join('');
+  $('#supplier-empty').classList.toggle('hidden', list.length > 0);
+}
+
+/* ============== 04 · RAW-MATERIAL SYMBIOSIS ============== */
+function renderSymbiosis() {
+  $('#symbiosis-list').innerHTML = SYMBIOSIS.map(s => {
+    const done = state.proposed.includes(s.id);
+    return `<article class="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+      <div class="flex items-center justify-between gap-3">
+        <span class="badge bg-emerald-500/15 text-emerald-300"><i data-lucide="recycle" class="h-3.5 w-3.5"></i>${s.fit}% match</span>
+        <span class="text-xs text-slate-400">≈ ${fmtUSD(s.valuePerMonth)}/month</span>
+      </div>
+      <div class="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+        <div class="min-w-0"><p class="text-[11px] uppercase tracking-wider text-slate-500">Outputs</p><p class="truncate text-sm font-semibold" title="${esc(s.from.name)}">${esc(s.from.name)}</p><p class="text-xs text-slate-400">${esc(s.from.city)}, ${esc(s.from.country)}</p></div>
+        <span class="grid h-9 w-9 place-items-center rounded-full bg-amber-500 text-navy-950"><i data-lucide="arrow-right" class="h-4 w-4"></i></span>
+        <div class="min-w-0 text-right"><p class="text-[11px] uppercase tracking-wider text-slate-500">Needs</p><p class="truncate text-sm font-semibold" title="${esc(s.to.name)}">${esc(s.to.name)}</p><p class="text-xs text-slate-400">${esc(s.to.city)}, ${esc(s.to.country)}</p></div>
+      </div>
+      <p class="mt-4 rounded-xl bg-white/5 px-4 py-3 text-sm"><span class="text-slate-400">Material:</span> <b>${esc(s.material)}</b> · ${fmtNum(s.qty)} ${esc(s.unit)}/month</p>
+      <div class="mt-4 flex items-center justify-between gap-3">
+        <p class="text-xs text-emerald-300/90">${esc(s.impact)}</p>
+        <button data-action="symbiosis" data-id="${s.id}" ${done ? 'disabled' : ''} class="btn-primary shrink-0 !py-1.5">${done ? '<i data-lucide="check" class="h-4 w-4"></i>Proposed' : 'Propose match'}</button>
+      </div>
+    </article>`;
+  }).join('');
+}
+
+/* ============== 05 · FINANCING & INCENTIVES ============== */
+/** Programs relevant to a category/region pair ('all' means "any"). */
+function programsFor(category, region) {
+  return FINANCING.filter(p =>
+    (category === 'all' || p.categories.includes('all') || p.categories.includes(category)) &&
+    (region === 'all' || p.regions.includes('Global') || p.regions.includes(region)));
+}
+
+function renderFinancing() {
+  const { category, region } = state.filters;
+  const filtered = category !== 'all' || region !== 'all';
+  const fits = new Set(programsFor(category, region).map(p => p.id));
+  $('#financing-grid').innerHTML = FINANCING.map(p => {
+    const fit = filtered && fits.has(p.id);
+    return `<article class="card p-5 transition ${fit ? '!border-amber-500 ring-2 ring-amber-500/20' : filtered ? 'opacity-60' : ''}">
+      <div class="flex items-start gap-3">
+        <div class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400"><i data-lucide="${p.icon}" class="h-5 w-5"></i></div>
+        <div class="min-w-0 flex-1"><h3 class="text-sm font-semibold text-slate-900 dark:text-white">${esc(p.name)}</h3><p class="text-xs text-slate-500 dark:text-slate-400">${esc(p.type)}</p></div>
+        ${fit ? '<span class="badge bg-amber-500 text-navy-950">Fits filter</span>' : ''}
+      </div>
+      <p class="mt-3 text-sm text-slate-600 dark:text-slate-300">${esc(p.desc)}</p>
+      <div class="mt-4 flex flex-wrap gap-1.5 text-[11px]">
+        <span class="rounded-md bg-navy-950 px-2 py-0.5 font-semibold text-amber-400 dark:bg-white/5">${esc(p.ticket)}</span>
+        ${p.regions.map(r => `<span class="rounded-md border border-slate-200 px-2 py-0.5 text-slate-500 dark:border-white/10 dark:text-slate-400">${esc(r)}</span>`).join('')}
+      </div>
+    </article>`;
+  }).join('');
+}
+
+/* ======================= 06 · DASHBOARD ======================= */
+function renderDashboard() {
+  const pending = state.bids.filter(b => b.status === 'pending');
+  const dealValue = TRANSACTIONS.reduce((s, t) => s + t.value, 0);
+  const earned = TRANSACTIONS.reduce((s, t) => s + t.value * t.rate, 0);
+  const pipeline = pending.reduce((s, b) => s + b.price * PIPELINE_RATE, 0);
+  const kpis = [
+    { label: 'Active bids', value: pending.length, sub: `${fmtUSD(pending.reduce((s, b) => s + b.price, 0))} bid value`, icon: 'gavel' },
+    { label: 'Matched deals', value: TRANSACTIONS.length, sub: `${fmtUSD(dealValue)} total value`, icon: 'handshake' },
+    { label: 'Commission earned', value: fmtUSDFull(earned), sub: 'From matched deals', icon: 'wallet' },
+    { label: 'Pipeline commission', value: fmtUSDFull(pipeline), sub: `If pending bids win (${PIPELINE_RATE * 100}%)`, icon: 'trending-up' },
+  ];
+  $('#kpi-grid').innerHTML = kpis.map(k => `<div class="card p-5">
+    <div class="flex items-center justify-between"><p class="text-xs font-medium text-slate-500 dark:text-slate-400">${k.label}</p><span class="grid h-8 w-8 place-items-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400"><i data-lucide="${k.icon}" class="h-4 w-4"></i></span></div>
+    <p class="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">${k.value}</p>
+    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">${k.sub}</p>
+  </div>`).join('');
+
+  const statusTone = { Settled: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400', 'In escrow': 'bg-blue-500/10 text-blue-700 dark:text-blue-400', Delivered: 'bg-amber-500/15 text-amber-700 dark:text-amber-300' };
+  $('#ledger-body').innerHTML = TRANSACTIONS.map(t => `<tr>
+    <td class="px-5 py-3"><div class="font-medium text-slate-900 dark:text-white">${esc(t.deal)}</div><div class="text-xs text-slate-500 dark:text-slate-400">${t.id} · ${esc(t.supplier)} · ${fmtDate(t.date)}</div></td>
+    <td class="px-3 py-3">${fmtUSD(t.value)}</td>
+    <td class="px-3 py-3">${(t.rate * 100).toFixed(1)}%</td>
+    <td class="px-3 py-3 font-semibold">${fmtUSDFull(t.value * t.rate)}</td>
+    <td class="px-5 py-3"><span class="badge ${statusTone[t.status]}">${t.status}</span></td>
+  </tr>`).join('');
+
+  $('#activity-log').innerHTML = state.activity.map(a => `<li class="flex gap-3 px-5 py-3">
+    <span class="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-300"><i data-lucide="${esc(a.icon)}" class="h-3.5 w-3.5"></i></span>
+    <div class="min-w-0"><p class="text-sm text-slate-700 dark:text-slate-200">${esc(a.text)}</p><p class="text-[11px] text-slate-400">${timeAgo(a.ts)}</p></div>
+  </li>`).join('');
+}
+
+function renderRevenue() {
+  $('#revenue-grid').innerHTML = REVENUE.map(r => `<div class="card p-4">
+    <span class="grid h-9 w-9 place-items-center rounded-lg bg-navy-950 text-amber-400 dark:bg-white/5"><i data-lucide="${r.icon}" class="h-4 w-4"></i></span>
+    <h3 class="mt-3 text-sm font-semibold text-slate-900 dark:text-white">${esc(r.name)}</h3>
+    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">${esc(r.who)}</p>
+    <p class="mt-2 text-sm font-medium text-amber-700 dark:text-amber-300">${esc(r.format)}</p>
+  </div>`).join('');
+}
+
+/* ===================== MATCH ALERTS (header bell) ===================== */
+/** Open demand in the categories you supply. A real build would send an email + SMS digest. */
+function renderAlerts() {
+  const matches = allDemands().filter(d => !d.mine && state.watch.includes(d.category) && daysUntil(d.deadline) >= 0).sort(bySeverity);
+  const count = $('#alerts-count');
+  count.textContent = matches.length;
+  count.classList.toggle('hidden', matches.length === 0);
+  $('#alerts-panel').innerHTML = `
+    <div class="border-b border-slate-100 p-4 dark:border-white/5">
+      <p class="text-sm font-semibold">Match alerts</p>
+      <p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Demand matching the categories you supply. Digest: email + SMS, daily (preview).</p>
+      <div class="mt-3 flex flex-wrap gap-1.5">${CATEGORIES.map(c => {
+        const on = state.watch.includes(c.id);
+        return `<button data-action="watch" data-id="${c.id}" aria-pressed="${on}" class="rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${on ? 'border-amber-500 bg-amber-500 text-navy-950' : 'border-slate-200 text-slate-600 hover:border-amber-500 dark:border-white/10 dark:text-slate-300'}">${esc(c.name)}</button>`;
+      }).join('')}</div>
+    </div>
+    <ul class="thin-scroll max-h-72 divide-y divide-slate-100 overflow-y-auto dark:divide-white/5">${matches.length ? matches.slice(0, 8).map(d => `<li>
+      <button data-action="detail" data-id="${d.id}" class="flex w-full gap-3 px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-white/5">
+        <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full" style="background:${SEVERITY[d.severity].color}"></span>
+        <span class="min-w-0"><span class="block truncate text-sm font-medium">${esc(d.title)}</span><span class="block text-xs text-slate-500 dark:text-slate-400">${esc(d.buyer)} · ${fmtUSD(d.budget)} · ${deadlineLabel(d.deadline)}</span></span>
+      </button></li>`).join('') : '<li class="px-4 py-8 text-center text-sm text-slate-500">Pick a category to start watching.</li>'}</ul>`;
+}
+
+function setAlertsOpen(open) {
+  $('#alerts-panel').classList.toggle('hidden', !open);
+  $('#alerts-btn').setAttribute('aria-expanded', String(open));
+}
+
+/* =====================================================================
+   GAP DETAIL DRAWER — who's buying, who's certified to supply, average
+   price/lead time, and the financing that fits this specific deal.
+   ===================================================================== */
+let lastFocus = null;
+
+function openDetail(id) {
+  const d = demandById(id); if (!d) return;
+  const c = catById(d.category), s = SEVERITY[d.severity];
+  const suppliers = MANUFACTURERS.filter(m => m.categories.includes(d.category)).sort((a, b) => (b.verified - a.verified) || a.leadTimeDays - b.leadTimeDays);
+  const verified = suppliers.filter(m => m.verified);
+  const local = verified.filter(m => m.region === d.region);
+  const buyers = allDemands().filter(x => x.category === d.category && x.id !== d.id).sort(bySeverity);
+  const programs = programsFor(d.category, d.region);
+  const insight = local.length
+    ? `${local.length} verified producer${local.length > 1 ? 's' : ''} in ${d.region} can bid on logistics advantage — ${verified.length} verified worldwide.`
+    : `No verified producer in ${d.region}; ${verified.length} verified worldwide. A local maker who certifies now wins on price and lead time.`;
+  const stat = (k, v) => `<div class="rounded-xl bg-slate-50 p-3 dark:bg-navy-950/60"><dt class="text-[11px] text-slate-400">${k}</dt><dd class="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white">${v}</dd></div>`;
+
+  $('#drawer-panel').innerHTML = `
+    <div class="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white/95 px-6 py-4 backdrop-blur dark:border-white/5 dark:bg-navy-900/95">
+      <span class="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"><i data-lucide="${c.icon}" class="h-4 w-4"></i>Gap detail · ${esc(c.name)}</span>
+      <button data-action="close-drawer" class="grid h-9 w-9 place-items-center rounded-lg hover:bg-slate-100 dark:hover:bg-white/5" aria-label="Close"><i data-lucide="x" class="h-5 w-5"></i></button>
+    </div>
+    <div class="px-6 py-6">
+      <span class="badge ${s.badge}">${s.label}</span>
+      <h2 class="mt-3 text-xl font-bold leading-snug text-slate-900 dark:text-white">${esc(d.title)}</h2>
+      <p class="mt-1 flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">${esc(d.buyer)} (${esc(d.buyerType)})${d.buyerVerified ? '<i data-lucide="badge-check" class="h-4 w-4 text-amber-500"></i>' : ' · unverified buyer'}</p>
+      <p class="mt-1 flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400"><i data-lucide="map-pin" class="h-4 w-4"></i>${esc(d.city)}, ${esc(d.country)} · ${esc(d.source)}</p>
+      <dl class="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
+        ${stat('Quantity', `${fmtNum(d.qty)} ${esc(d.unit)}`)}${stat('Budget', fmtUSDFull(d.budget))}${stat('Per unit', fmtUSDFull(d.budget / d.qty))}
+        ${stat('Deadline', `${fmtDate(d.deadline)}`)}${stat('Avg. supplier lead', suppliers.length ? `${Math.round(avg(suppliers.map(m => m.leadTimeDays)))} days` : '—')}${stat('Avg. price index', suppliers.length ? avg(suppliers.map(m => m.priceIndex)).toFixed(2) : '—')}
+      </dl>
+      <div class="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-800 dark:text-amber-200"><b>Gap insight:</b> ${esc(insight)}</div>
+      <div class="mt-4 rounded-xl border border-slate-200 p-4 text-sm dark:border-white/10"><p class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Specification</p><p class="mt-1 text-slate-700 dark:text-slate-200">${esc(d.spec)}</p></div>
+
+      <h3 class="mt-7 text-sm font-semibold text-slate-900 dark:text-white">Certified to supply (${suppliers.length})</h3>
+      <ul class="mt-2 divide-y divide-slate-100 rounded-xl border border-slate-200 dark:divide-white/5 dark:border-white/10">${suppliers.length ? suppliers.map(m => `<li class="flex items-center gap-3 px-4 py-3">
+        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-navy-950 text-xs font-bold text-amber-400 dark:bg-white/5">${esc(initials(m.name))}</span>
+        <div class="min-w-0 flex-1"><p class="flex items-center gap-1 truncate text-sm font-medium text-slate-900 dark:text-white">${esc(m.name)}${m.verified ? '<i data-lucide="badge-check" class="h-3.5 w-3.5 shrink-0 text-emerald-500"></i>' : ''}</p>
+          <p class="text-xs text-slate-500 dark:text-slate-400">${esc(m.country)} · ${fmtNum(m.capacity)} ${esc(m.capacityUnit)}/mo · ${m.leadTimeDays} d · PI ${m.priceIndex.toFixed(2)}</p></div>
+        <button data-action="contact" data-id="${m.id}" class="btn-ghost !px-2.5 !py-1.5 !text-xs">Contact</button>
+      </li>`).join('') : '<li class="px-4 py-6 text-center text-sm text-slate-500">No registered supplier yet — this is an open gap.</li>'}</ul>
+
+      <h3 class="mt-7 text-sm font-semibold text-slate-900 dark:text-white">Who else is buying ${esc(c.name.toLowerCase())}</h3>
+      <ul class="mt-2 space-y-1.5">${buyers.length ? buyers.map(x => `<li><button data-action="detail" data-id="${x.id}" class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-slate-50 dark:hover:bg-white/5">
+        <span class="h-2 w-2 shrink-0 rounded-full" style="background:${SEVERITY[x.severity].color}"></span><span class="min-w-0 flex-1 truncate">${esc(x.buyer)} — ${esc(x.city)}</span><span class="text-xs font-semibold">${fmtUSD(x.budget)}</span></button></li>`).join('') : '<li class="text-sm text-slate-500">No other open demand in this category.</li>'}</ul>
+
+      <h3 class="mt-7 text-sm font-semibold text-slate-900 dark:text-white">Financing that fits</h3>
+      <ul class="mt-2 space-y-2">${programs.map(p => `<li class="flex items-start gap-3 rounded-xl border border-slate-200 p-3 dark:border-white/10">
+        <i data-lucide="${p.icon}" class="mt-0.5 h-4 w-4 shrink-0 text-amber-500"></i>
+        <div class="min-w-0"><p class="text-sm font-medium text-slate-900 dark:text-white">${esc(p.name)}</p><p class="text-xs text-slate-500 dark:text-slate-400">${esc(p.type)} · ${esc(p.ticket)}</p></div></li>`).join('')}</ul>
+    </div>
+    <div class="sticky bottom-0 flex gap-2 border-t border-slate-100 bg-white/95 px-6 py-4 backdrop-blur dark:border-white/5 dark:bg-navy-900/95">
+      ${d.mine ? '<p class="text-sm text-slate-500">This is your listing — suppliers will bid on it.</p>'
+        : activeBidFor(d.id) ? `<p class="text-sm text-slate-500">Your bid of <b>${fmtUSDFull(activeBidFor(d.id).price)}</b> is pending.</p>`
+        : `<button data-action="bid" data-id="${d.id}" class="btn-primary flex-1"><i data-lucide="gavel" class="h-4 w-4"></i>Place bid</button>`}
+      <button data-action="fly" data-id="${d.id}" class="btn-ghost"><i data-lucide="map" class="h-4 w-4"></i>On map</button>
+    </div>`;
+  refreshIcons();
+  setAlertsOpen(false);
+  const root = $('#drawer-root'), panel = $('#drawer-panel');
+  if (root.classList.contains('hidden')) lastFocus = document.activeElement;
+  root.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  panel.scrollTop = 0;
+  requestAnimationFrame(() => panel.classList.remove('translate-x-full'));
+  panel.querySelector('[data-action="close-drawer"]').focus({ preventScroll: true });
+}
+
+function closeDrawer() {
+  const root = $('#drawer-root');
+  if (root.classList.contains('hidden')) return;
+  $('#drawer-panel').classList.add('translate-x-full');
+  setTimeout(() => { root.classList.add('hidden'); if ($('#modal-root').classList.contains('hidden')) document.body.style.overflow = ''; }, 250);
+  if (lastFocus) lastFocus.focus({ preventScroll: true });
+}
+
+/* =====================================================================
+   MODALS — shared shell; each form validates its own fields.
+   ===================================================================== */
+function openModal(html, onSubmit) {
+  const root = $('#modal-root'), panel = $('#modal-panel');
+  if (root.classList.contains('hidden')) lastFocus = document.activeElement;
+  panel.innerHTML = html;
+  panel.classList.remove('modal-in'); void panel.offsetWidth; panel.classList.add('modal-in');
+  root.classList.remove('hidden'); root.classList.add('flex');
+  document.body.style.overflow = 'hidden';
+  refreshIcons();
+  const form = panel.querySelector('form');
+  form.addEventListener('submit', e => { e.preventDefault(); onSubmit(form); });
+  const first = form.querySelector('input, textarea, select');
+  if (first) first.focus();
+}
+
+function closeModal() {
+  const root = $('#modal-root');
+  if (root.classList.contains('hidden')) return;
+  root.classList.add('hidden'); root.classList.remove('flex');
+  if ($('#drawer-root').classList.contains('hidden')) document.body.style.overflow = '';
+  if (lastFocus) lastFocus.focus({ preventScroll: true });
+}
+
+const modalHeader = (eyebrow, title, sub) => `<div class="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5 dark:border-white/5">
+  <div class="min-w-0"><p class="eyebrow">${eyebrow}</p><h2 class="mt-1 text-lg font-bold leading-snug text-slate-900 dark:text-white">${title}</h2>${sub ? `<p class="mt-0.5 text-sm text-slate-500 dark:text-slate-400">${sub}</p>` : ''}</div>
+  <button type="button" data-action="close-modal" class="grid h-9 w-9 shrink-0 place-items-center rounded-lg hover:bg-slate-100 dark:hover:bg-white/5" aria-label="Close"><i data-lucide="x" class="h-5 w-5"></i></button>
+</div>`;
+const modalFooter = label => `<div class="flex justify-end gap-2 border-t border-slate-100 px-6 py-4 dark:border-white/5">
+  <button type="button" data-action="close-modal" class="btn-ghost">Cancel</button><button type="submit" class="btn-primary">${label}</button></div>`;
+const formError = form => (msg) => { const el = form.querySelector('[data-error]'); el.textContent = msg; el.classList.toggle('hidden', !msg); };
+
+/* ---------- Bid flow: price, delivery days, note → My Bids (pending) ---------- */
+function openBidModal(id) {
+  const d = demandById(id); if (!d || d.mine || activeBidFor(id)) return;
+  closeDrawer();
+  openModal(`<form novalidate>
+    ${modalHeader('Place a bid · reverse auction', esc(d.title), `${esc(d.buyer)} · ${esc(d.city)}, ${esc(d.country)}`)}
+    <div class="space-y-4 px-6 py-5">
+      <div class="grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3 text-xs dark:bg-navy-950/60">
+        <div><p class="text-slate-400">Buyer budget</p><p class="font-semibold text-slate-900 dark:text-white">${fmtUSDFull(d.budget)}</p></div>
+        <div><p class="text-slate-400">Per unit</p><p class="font-semibold text-slate-900 dark:text-white">${fmtUSDFull(d.budget / d.qty)}</p></div>
+        <div><p class="text-slate-400">Closes</p><p class="font-semibold text-slate-900 dark:text-white">${fmtDate(d.deadline)}</p></div>
+      </div>
+      <div><label class="label" for="bid-price">Total price (USD)</label><input id="bid-price" name="price" type="number" inputmode="numeric" min="1" step="1" required class="input" placeholder="e.g. ${Math.round(d.budget * 0.94)}" />
+        <p id="bid-hint" class="mt-1 text-xs text-slate-500 dark:text-slate-400">Lower bids rank higher; buyers also weigh delivery and certifications.</p></div>
+      <div><label class="label" for="bid-days">Delivery (days from award)</label><input id="bid-days" name="days" type="number" inputmode="numeric" min="1" max="730" required class="input" placeholder="e.g. 60" /></div>
+      <div><label class="label" for="bid-note">Note to buyer <span class="font-normal text-slate-400">(optional)</span></label><textarea id="bid-note" name="note" rows="3" maxlength="500" class="input" placeholder="Certifications, Incoterms, logistics plan…"></textarea></div>
+      <p data-error class="hidden text-sm font-medium text-red-600 dark:text-red-400"></p>
+    </div>
+    ${modalFooter('<i data-lucide="send" class="h-4 w-4"></i>Submit bid')}
+  </form>`, form => {
+    const err = formError(form);
+    const price = Math.round(Number(form.price.value));
+    const days = Math.round(Number(form.days.value));
+    if (!price || price <= 0) return err('Enter a total price above zero.');
+    if (!days || days < 1 || days > 730) return err('Delivery must be between 1 and 730 days.');
+    const bid = { id: 'b' + Date.now(), demandId: d.id, price, deliveryDays: days, note: form.note.value.trim().slice(0, 500), status: 'pending', submittedAt: Date.now() };
+    state.bids.push(bid);
+    store.set(KEYS.bids, state.bids);
+    logActivity('gavel', `Bid submitted: ${fmtUSDFull(price)} for “${d.title}” (${days} days)`);
+    closeModal();
+    renderAll();
+    toast(`Bid placed on ${d.title} — status: pending`);
+  });
+  // Live hint: how the bid compares with the buyer's budget.
+  const priceInput = $('#bid-price'), hint = $('#bid-hint');
+  priceInput.addEventListener('input', () => {
+    const v = Number(priceInput.value);
+    if (!v) { hint.textContent = 'Lower bids rank higher; buyers also weigh delivery and certifications.'; hint.className = 'mt-1 text-xs text-slate-500 dark:text-slate-400'; return; }
+    const pct = ((v - d.budget) / d.budget) * 100;
+    hint.textContent = pct <= 0 ? `${Math.abs(pct).toFixed(1)}% under budget · ${fmtUSDFull(v / d.qty)} per ${d.unit === 'units' ? 'unit' : d.unit}` : `${pct.toFixed(1)}% over budget — unlikely to win`;
+    hint.className = `mt-1 text-xs ${pct <= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`;
+  });
+}
+
+/* ---------- Supplier enquiry (mock — nothing is sent) ---------- */
+function openContactModal(id) {
+  const m = MANUFACTURERS.find(x => x.id === id); if (!m) return;
+  openModal(`<form novalidate>
+    ${modalHeader('Supplier enquiry', esc(m.name), `${esc(m.city)}, ${esc(m.country)} · ${m.verified ? 'Verified' : 'Pending verification'}`)}
+    <div class="space-y-4 px-6 py-5">
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div><label class="label" for="c-name">Your name</label><input id="c-name" name="name" required maxlength="80" class="input" autocomplete="name" /></div>
+        <div><label class="label" for="c-company">Organisation</label><input id="c-company" name="company" maxlength="80" class="input" autocomplete="organization" /></div>
+      </div>
+      <div><label class="label" for="c-email">Work email</label><input id="c-email" name="email" type="email" required maxlength="120" class="input" autocomplete="email" /></div>
+      <div><label class="label" for="c-msg">Message</label><textarea id="c-msg" name="message" rows="4" maxlength="1000" required class="input">Hello ${esc(m.name)} team — we're sourcing ${esc(catById(m.categories[0]).name.toLowerCase())} and would like to confirm available capacity (${fmtNum(m.capacity)} ${esc(m.capacityUnit)}/month listed), current lead time and copies of your ${esc(m.certs.slice(0, 2).join(' / '))} certificates.</textarea></div>
+      <p class="text-xs text-slate-500 dark:text-slate-400">Prototype: the enquiry is logged to your dashboard only — nothing is sent.</p>
+      <p data-error class="hidden text-sm font-medium text-red-600 dark:text-red-400"></p>
+    </div>
+    ${modalFooter('<i data-lucide="mail" class="h-4 w-4"></i>Send enquiry')}
+  </form>`, form => {
+    const err = formError(form);
+    if (!form.name.value.trim()) return err('Please add your name.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(form.email.value.trim())) return err('Enter a valid email address.');
+    if (form.message.value.trim().length < 10) return err('Message is too short.');
+    logActivity('mail', `Enquiry sent to ${m.name} by ${form.name.value.trim()}`);
+    closeModal();
+    renderDashboard(); refreshIcons();
+    toast(`Enquiry sent to ${m.name}`);
+  });
+}
+
+/* ---------- Buyers publish a new demand (pinned to its region centre) ---------- */
+function openPostDemandModal() {
+  const min = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  openModal(`<form novalidate>
+    ${modalHeader('Buyer · publish a demand', 'Post a new demand', 'Verified producers are matched and alerted.')}
+    <div class="space-y-4 px-6 py-5">
+      <div><label class="label" for="p-title">What do you need?</label><input id="p-title" name="title" required maxlength="90" class="input" placeholder="e.g. 300 × 11kV distribution transformers" /></div>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div><label class="label" for="p-cat">Category</label><select id="p-cat" name="category" class="input">${CATEGORIES.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
+        <div><label class="label" for="p-qty">Quantity <span id="p-unit" class="font-normal text-slate-400">(units)</span></label><input id="p-qty" name="qty" type="number" min="1" required class="input" /></div>
+        <div><label class="label" for="p-budget">Budget (USD)</label><input id="p-budget" name="budget" type="number" min="1" required class="input" /></div>
+        <div><label class="label" for="p-deadline">Delivery deadline</label><input id="p-deadline" name="deadline" type="date" min="${min}" required class="input" /></div>
+        <div><label class="label" for="p-city">City</label><input id="p-city" name="city" required maxlength="40" class="input" placeholder="Port Harcourt" /></div>
+        <div><label class="label" for="p-country">Country</label><input id="p-country" name="country" required maxlength="40" class="input" placeholder="Nigeria" /></div>
+      </div>
+      <div><label class="label" for="p-region">Region</label><select id="p-region" name="region" class="input">${REGIONS.map(r => `<option>${esc(r.id)}</option>`).join('')}</select></div>
+      <div><label class="label" for="p-spec">Specification</label><input id="p-spec" name="spec" maxlength="140" class="input" placeholder="Standard, rating, packaging, Incoterms…" /></div>
+      <p data-error class="hidden text-sm font-medium text-red-600 dark:text-red-400"></p>
+    </div>
+    ${modalFooter('<i data-lucide="file-plus" class="h-4 w-4"></i>Publish demand')}
+  </form>`, form => {
+    const err = formError(form);
+    const v = name => form[name].value.trim();
+    if (v('title').length < 5) return err('Describe what you need (5+ characters).');
+    if (!(Number(v('qty')) > 0)) return err('Quantity must be above zero.');
+    if (!(Number(v('budget')) > 0)) return err('Budget must be above zero.');
+    if (!v('deadline') || daysUntil(v('deadline')) < 1) return err('Pick a deadline after today.');
+    if (!v('city') || !v('country')) return err('Add the delivery city and country.');
+    const category = v('category'), region = REGIONS.find(r => r.id === v('region')) || REGIONS[0];
+    // Severity is estimated from how many verified suppliers exist for the category.
+    const supply = MANUFACTURERS.filter(m => m.verified && m.categories.includes(category)).length;
+    const demand = {
+      id: 'u' + Date.now(), mine: true, title: v('title'), buyer: 'Your organisation', buyerType: 'Buyer', buyerVerified: false,
+      category, qty: Math.round(Number(v('qty'))), unit: catById(category).unit, spec: v('spec') || 'To be confirmed with bidders',
+      city: v('city'), country: v('country'), region: region.id,
+      lat: region.lat + (Math.random() - 0.5) * 3, lng: region.lng + (Math.random() - 0.5) * 3,
+      deadline: v('deadline'), budget: Math.round(Number(v('budget'))), severity: supply <= 1 ? 'acute' : supply <= 3 ? 'tight' : 'healthy',
+      source: 'Posted on Mend', bids: 0,
+    };
+    state.customDemands.unshift(demand);
+    store.set(KEYS.demands, state.customDemands);
+    logActivity('file-plus', `You published a demand: ${demand.title} (${demand.city})`);
+    closeModal();
+    renderAll();
+    toast('Demand published — matching suppliers will be alerted');
+  });
+  $('#p-cat').addEventListener('change', e => { $('#p-unit').textContent = `(${catById(e.target.value).unit})`; });
+}
+
+/* =====================================================================
+   RENDER ORCHESTRATION + EVENTS
+   ===================================================================== */
+function renderAll() {
+  const demands = filteredDemands();
+  renderHero(); renderMap(demands); renderHotspots(demands); renderTenders(demands); renderMyBids();
+  renderSuppliers(); renderSymbiosis(); renderFinancing(); renderDashboard(); renderAlerts();
+  const supplierCount = filteredManufacturers(true).length;
+  $('#f-summary').textContent = `${demands.length} demand${demands.length === 1 ? '' : 's'} · ${supplierCount} supplier${supplierCount === 1 ? '' : 's'}`;
+  refreshIcons();
+}
+
+/** Called whenever a global filter changes: sync inputs, re-render, re-frame the map. */
+function applyFilters() {
+  $('#f-search').value = state.filters.q;
+  $('#f-category').value = state.filters.category;
+  $('#f-region').value = state.filters.region;
+  $('#f-verified').checked = state.filters.verified;
+  renderAll();
+  fitMap(filteredDemands());
+}
+
+function populateSelects() {
+  $('#f-category').innerHTML = '<option value="all">All categories</option>' + CATEGORIES.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  $('#f-region').innerHTML = '<option value="all">All regions</option>' + REGIONS.map(r => `<option>${esc(r.id)}</option>`).join('');
+  const certs = [...new Set(MANUFACTURERS.flatMap(m => m.certs))].sort();
+  const countries = [...new Set(MANUFACTURERS.map(m => m.country))].sort();
+  $('#d-cert').innerHTML = '<option value="all">Any certification</option>' + certs.map(c => `<option>${esc(c)}</option>`).join('');
+  $('#d-country').innerHTML = '<option value="all">Any country</option>' + countries.map(c => `<option>${esc(c)}</option>`).join('');
+}
+
+function setTheme(dark) {
+  document.documentElement.classList.toggle('dark', dark);
+  try { localStorage.setItem(KEYS.theme, dark ? 'dark' : 'light'); } catch (e) { /* ignore */ }
+  setTiles();
+}
+
+function bindEvents() {
+  let t;
+  $('#f-search').addEventListener('input', e => { clearTimeout(t); t = setTimeout(() => { state.filters.q = e.target.value; applyFilters(); }, 150); });
+  $('#f-category').addEventListener('change', e => { state.filters.category = e.target.value; applyFilters(); });
+  $('#f-region').addEventListener('change', e => { state.filters.region = e.target.value; applyFilters(); });
+  $('#f-verified').addEventListener('change', e => { state.filters.verified = e.target.checked; applyFilters(); });
+  const reset = () => { state.filters = { q: '', category: 'all', region: 'all', verified: false }; $('#hero-search-input').value = ''; applyFilters(); };
+  $('#f-reset').addEventListener('click', reset);
+  $('#tender-reset').addEventListener('click', reset);
+  $('#hero-search').addEventListener('submit', e => {
+    e.preventDefault();
+    state.filters.q = $('#hero-search-input').value.trim();
+    applyFilters();
+    document.getElementById('radar').scrollIntoView({ behavior: 'smooth' });
+  });
+  $('#tender-sort').addEventListener('change', e => { state.tenderSort = e.target.value; renderTenders(filteredDemands()); refreshIcons(); });
+  $('#toggle-factories').addEventListener('change', e => { state.showFactories = e.target.checked; renderMap(filteredDemands()); });
+  $('#d-cert').addEventListener('change', e => { state.dir.cert = e.target.value; renderAll(); });
+  $('#d-country').addEventListener('change', e => { state.dir.country = e.target.value; renderAll(); });
+  $('#d-sort').addEventListener('change', e => { state.dir.sort = e.target.value; renderAll(); });
+  $('#d-lead').addEventListener('input', e => { state.dir.maxLead = Number(e.target.value); $('#d-lead-out').textContent = `${e.target.value} days`; renderSuppliers(); refreshIcons(); });
+  $('#theme-toggle').addEventListener('click', () => setTheme(!document.documentElement.classList.contains('dark')));
+  $('#alerts-btn').addEventListener('click', e => { e.stopPropagation(); setAlertsOpen($('#alerts-panel').classList.contains('hidden')); });
+  $('#menu-btn').addEventListener('click', () => {
+    const nav = $('#mobile-nav'), open = nav.classList.toggle('hidden') === false;
+    $('#menu-btn').setAttribute('aria-expanded', String(open));
+  });
+  $('#mobile-nav').addEventListener('click', e => { if (e.target.closest('a, button')) { $('#mobile-nav').classList.add('hidden'); $('#menu-btn').setAttribute('aria-expanded', 'false'); } });
+
+  // One delegated handler for every [data-action] button (cards, popups, drawer, modals).
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#alerts-wrap')) setAlertsOpen(false);
+    const el = e.target.closest('[data-action]'); if (!el) return;
+    const { action, id } = el.dataset;
+    const actions = {
+      detail: () => openDetail(id),
+      bid: () => openBidModal(id),
+      contact: () => openContactModal(id),
+      fly: () => { closeDrawer(); flyToDemand(id); },
+      'post-demand': openPostDemandModal,
+      'close-modal': closeModal,
+      'close-drawer': closeDrawer,
+      chip: () => { state.filters.category = state.filters.category === id ? 'all' : id; applyFilters(); },
+      watch: () => {
+        state.watch = state.watch.includes(id) ? state.watch.filter(x => x !== id) : [...state.watch, id];
+        store.set(KEYS.watch, state.watch); renderAlerts(); refreshIcons();
+      },
+      withdraw: () => {
+        const b = state.bids.find(x => x.id === id); if (!b) return;
+        b.status = 'withdrawn'; store.set(KEYS.bids, state.bids);
+        logActivity('undo-2', `Bid withdrawn: ${(demandById(b.demandId) || {}).title || b.demandId}`);
+        renderAll(); toast('Bid withdrawn', 'info');
+      },
+      'remove-bid': () => { state.bids = state.bids.filter(x => x.id !== id); store.set(KEYS.bids, state.bids); renderAll(); },
+      symbiosis: () => {
+        const s = SYMBIOSIS.find(x => x.id === id); if (!s || state.proposed.includes(id)) return;
+        state.proposed.push(id); store.set(KEYS.symbiosis, state.proposed);
+        logActivity('recycle', `Symbiosis proposed: ${s.material} — ${s.from.name} → ${s.to.name}`);
+        renderSymbiosis(); renderDashboard(); refreshIcons(); toast(`Match proposed to ${s.from.name} and ${s.to.name}`);
+      },
+    };
+    if (actions[action]) { e.preventDefault(); actions[action](); }
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (!$('#modal-root').classList.contains('hidden')) closeModal();
+    else if (!$('#drawer-root').classList.contains('hidden')) closeDrawer();
+    else setAlertsOpen(false);
+  });
+
+  // Highlight the nav link for the section currently in view.
+  const links = [...document.querySelectorAll('#desktop-nav a')];
+  const io = new IntersectionObserver(entries => entries.forEach(en => {
+    if (!en.isIntersecting) return;
+    links.forEach(a => { const on = a.getAttribute('href') === '#' + en.target.id; a.classList.toggle('text-white', on); a.classList.toggle('bg-white/10', on); });
+  }), { rootMargin: '-45% 0px -50% 0px' });
+  ['radar', 'tenders', 'suppliers', 'symbiosis', 'financing', 'dashboard'].forEach(id => io.observe(document.getElementById(id)));
+
+  // Keep relative timestamps ("3 min ago") fresh.
+  setInterval(() => { renderMyBids(); renderDashboard(); refreshIcons(); }, 60000);
+}
+
+/* ============================== INIT ============================== */
+document.addEventListener('DOMContentLoaded', () => {
+  $('#year').textContent = new Date().getFullYear();
+  store.set(KEYS.activity, state.activity);
+  populateSelects();
+  initMap();
+  renderRevenue();
+  bindEvents();
+  applyFilters();
+});
+</script>
+</body>
+</html>
